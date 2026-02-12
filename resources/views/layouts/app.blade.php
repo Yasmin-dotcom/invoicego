@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-
+    
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -27,9 +27,11 @@
 </head>
 
 
-<body class="font-sans antialiased">
+<body class="font-sans antialiased"
+      x-data="{ onboarding: {{ json_encode(request()->routeIs('onboarding*')) }}, sidebarExpanded: true }">
 
-<div class="pl-16 min-h-screen bg-gradient-to-br from-gray-50 via-slate-50 to-gray-100">
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 transition-all duration-300"
+     :class="onboarding ? 'pl-0' : (sidebarExpanded ? 'pl-48' : 'pl-16')">
 
     {{-- ================= TOP NAVIGATION (unchanged) ================= --}}
     @include('layouts.navigation')
@@ -38,10 +40,11 @@
     {{-- ================= STICKY HEADER (FIXED + SHADOW ADDED) ================= --}}
     @isset($header)
     <header
-        class="fixed top-0 left-16 right-0 z-50
+        class="fixed top-0 right-0 z-50 transition-all duration-300
                bg-white/95 backdrop-blur-md
                shadow-md
-               border-b border-gray-200">
+               border-b border-gray-200"
+        :class="onboarding ? 'left-0' : (sidebarExpanded ? 'left-48' : 'left-16')">
 
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
             {{ $header }}
@@ -51,8 +54,8 @@
 
 
     {{-- ================= PAGE CONTENT ================= --}}
-    {{-- pt-20 pushes content below fixed header --}}
-    <main class="pt-20">
+    {{-- pt-10 pushes content below navbar --}}
+    <main class="pt-10">
 
         {{-- Upgrade success banner --}}
         @if (session('upgraded_success'))

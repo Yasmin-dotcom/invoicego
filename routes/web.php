@@ -86,6 +86,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/onboarding/complete', [OnboardingController::class, 'storeClient'])
         ->name('onboarding.complete');
 
+    Route::post('/onboarding/skip', [OnboardingController::class, 'skip'])
+        ->name('onboarding.skip');
+
     Route::resource('clients', ClientController::class);
 
     Route::get('/dashboard/search-invoices', [DashboardController::class, 'searchInvoices']);

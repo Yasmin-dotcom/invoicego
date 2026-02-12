@@ -81,4 +81,16 @@ class OnboardingController extends Controller
 
         return redirect()->route('dashboard');
     }
+
+    public function skip(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        if (! $user) {
+            return redirect()->route('login');
+        }
+
+        $user->forceFill(['onboarded' => true])->save();
+
+        return redirect()->route('dashboard');
+    }
 }
