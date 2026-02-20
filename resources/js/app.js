@@ -2,7 +2,24 @@ import './bootstrap';
 import Alpine from 'alpinejs';
 
 window.Alpine = Alpine;
-Alpine.start();
+
+// Start Alpine safely (fix dropdown after redirect/new invoice)
+document.addEventListener('DOMContentLoaded', () => {
+    if (!window.__alpine_started) {
+        Alpine.start();
+        window.__alpine_started = true;
+    }
+});
+
+// Fix Alpine after Laravel redirect / bfcache
+window.addEventListener('pageshow', function () {
+    if (!window.__alpine_started) {
+        Alpine.start();
+        window.__alpine_started = true;
+    }
+});
+
+
 
 
 // =============================
@@ -147,6 +164,4 @@ if (passInput) {
     });
 }
 
-
-    });
-    
+});

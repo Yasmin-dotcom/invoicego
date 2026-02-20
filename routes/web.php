@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Services\GstCalculator;
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\InvoiceController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Admin\UserManagementController;
 use App\Http\Controllers\Client\InvoiceController as ClientInvoiceController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OnboardingController;
+use App\Http\Controllers\SettingsController;
 
 
 /*
@@ -25,8 +27,22 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('/test-gst', function () {
+    $result = GstCalculator::calculate(
+        itemPrice: 100,
+        quantity: 2,
+        gstRate: 18,
+        sellerStateCode: '29',
+        clientStateCode: '29'
+    );
+    return response()->json($result);
+});
+
 Route::get('/pay/{invoice}', [PaymentController::class, 'publicPay'])
     ->name('invoice.public.pay');
+
+Route::get('/pay/{invoice}/{token}', [PaymentController::class, 'publicPaySummary'])
+    ->name('invoice_public_pay');
 
 Route::get('/payment/success/{invoice}', [PaymentController::class, 'paymentSuccessPage'])
     ->name('payment.success');
@@ -99,6 +115,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard/export/csv/month', [DashboardController::class, 'exportMonthInvoices'])
         ->name('dashboard.export.month');
 
+    Route::get('/settings/reminders', [SettingsController::class, 'reminders'])
+        ->name('settings.reminders');
+
+    Route::post('/settings/reminders', [SettingsController::class, 'saveReminders'])
+        ->name('settings.reminders.save');
+
 
     /*
     |--------------------------------------------------------------------------
@@ -140,6 +162,12 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'markAsSent'])
         ->name('invoices.send');
+
+    Route::get('/invoices/{invoice}/send-preview', [InvoiceController::class, 'sendPreview'])
+        ->name('invoices.send.preview');
+
+    Route::post('/invoices/{invoice}/send-email', [InvoiceController::class, 'sendEmail'])
+        ->name('invoices.send.email');
 
     Route::post('/invoices/{invoice}/mark-paid', [InvoiceController::class, 'markPaid'])
         ->name('invoices.mark-paid');

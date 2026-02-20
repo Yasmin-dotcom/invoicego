@@ -19,7 +19,8 @@ class InvoiceCreatedMail extends Mailable
      * Create a new message instance.
      */
     public function __construct(
-        public Invoice $invoice
+        public Invoice $invoice,
+        public bool $includePdf = true
     ) {
         //
     }
@@ -57,6 +58,10 @@ class InvoiceCreatedMail extends Mailable
      */
     public function attachments(): array
     {
+        if (! $this->includePdf) {
+            return [];
+        }
+
         // Generate PDF for attachment
         $invoice = $this->invoice->load(['client', 'items']);
         $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));

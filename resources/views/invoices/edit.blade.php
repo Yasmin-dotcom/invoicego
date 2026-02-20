@@ -64,6 +64,48 @@
                     @enderror
                 </div>
 
+                {{-- Invoice Items --}}
+                <div>
+                    <label class="block text-sm font-medium mb-2">Items *</label>
+                    <table class="w-full border border-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="p-2 text-left">Description</th>
+                                <th class="p-2 w-20">Qty</th>
+                                <th class="p-2 w-24">Price</th>
+                                <th class="p-2 w-20">GST %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($invoice->items as $index => $item)
+                            <tr class="border-t">
+                                <td class="p-2">
+                                    <input name="items[{{ $index }}][description]" type="text" required
+                                           value="{{ old('items.'.$index.'.description', $item->description) }}"
+                                           class="w-full border rounded px-2 py-1 text-sm">
+                                </td>
+                                <td class="p-2">
+                                    <input name="items[{{ $index }}][quantity]" type="number" step="1" min="1" required
+                                           value="{{ old('items.'.$index.'.quantity', $item->quantity) }}"
+                                           class="w-full border rounded px-2 py-1 text-sm">
+                                </td>
+                                <td class="p-2">
+                                    <input name="items[{{ $index }}][price]" type="number" step="0.01" min="0" required
+                                           value="{{ old('items.'.$index.'.price', $item->price) }}"
+                                           class="w-full border rounded px-2 py-1 text-sm">
+                                </td>
+                                <td class="p-2">
+                                    <input name="items[{{ $index }}][gst_rate]" type="number" step="0.01" min="0" max="100"
+                                           value="{{ old('items.'.$index.'.gst_rate', $item->gst_rate ?? 0) }}"
+                                           placeholder="0"
+                                           class="w-full border rounded px-2 py-1 text-sm">
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
                 <div class="flex justify-end">
                     <div class="w-full max-w-sm rounded border border-gray-200 bg-gray-50 p-4">
                         <div class="flex items-center justify-between text-sm text-gray-600">
@@ -71,12 +113,6 @@
                             <input id="subtotalPreview" type="text" readonly
                                    value="0.00"
                                    class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
-                        </div>
-                        <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
-                            <label for="gstPercent" class="mr-3">GST %</label>
-                            <input id="gstPercent" name="gst_percent" type="number" step="0.01" min="0"
-                                   value="0"
-                                   class="w-24 text-right border border-gray-300 rounded px-2 py-1" />
                         </div>
                         <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
                             <span>Tax Amount</span>
@@ -112,7 +148,6 @@
 
     <script>
         (function () {
-            const gstInput = document.getElementById('gstPercent');
             const subtotalEl = document.getElementById('subtotalPreview');
             const gstAmountEl = document.getElementById('gstAmountPreview');
             const grandTotalEl = document.getElementById('grandTotalPreview');
@@ -122,24 +157,22 @@
                 return Number.isFinite(num) ? num : 0;
             }
 
-            function calculateSubtotal() {
+            function calculateTotals() {
                 const qtyInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[quantity]"]'));
                 const priceInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[price]"]'));
+                const gstInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[gst_rate]"]'));
                 let subtotal = 0;
+                let gstAmount = 0;
 
                 qtyInputs.forEach((qtyInput, index) => {
                     const qty = parseNumber(qtyInput.value);
                     const price = parseNumber(priceInputs[index]?.value);
-                    subtotal += qty * price;
+                    const gstRate = parseNumber(gstInputs[index]?.value ?? 0);
+                    const itemTotal = qty * price;
+                    subtotal += itemTotal;
+                    gstAmount += itemTotal * (gstRate / 100);
                 });
 
-                return subtotal;
-            }
-
-            function updatePreview() {
-                const subtotal = calculateSubtotal();
-                const gstPercent = parseNumber(gstInput?.value);
-                const gstAmount = subtotal * (gstPercent / 100);
                 const grandTotal = subtotal + gstAmount;
 
                 if (subtotalEl) subtotalEl.value = subtotal.toFixed(2);
@@ -148,12 +181,12 @@
             }
 
             document.addEventListener('input', (event) => {
-                if (event.target.matches('[name^="items"][name$="[quantity]"], [name^="items"][name$="[price]"], #gstPercent')) {
-                    updatePreview();
+                if (event.target.matches('[name^="items"][name$="[quantity]"], [name^="items"][name$="[price]"], [name^="items"][name$="[gst_rate]"]')) {
+                    calculateTotals();
                 }
             });
 
-            updatePreview();
+            calculateTotals();
         })();
     </script>
 </x-app-layout>

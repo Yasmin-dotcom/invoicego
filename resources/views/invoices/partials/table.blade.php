@@ -1,4 +1,4 @@
-<table class="w-full border border-gray-200 text-sm">
+<table class="w-full border border-gray-200 text-sm overflow-visible">
 
     {{-- ================= HEADER ================= --}}
     <thead class="sticky top-0 bg-white z-10 border-b border-gray-200">
@@ -22,7 +22,7 @@
 
 
     {{-- ================= BODY ================= --}}
-    <tbody>
+    <tbody class="overflow-visible">
 
     @if($invoices->isEmpty())
 
@@ -99,115 +99,75 @@
             </td>
 
 
-            {{-- ================= ACTIONS (V2 PRO DROPDOWN) ================= --}}
-            <td class="p-2 text-center relative w-24">
+            {{-- ================= ACTIONS (INLINE ICONS) ================= --}}
+            <td class="p-2 w-44">
+                <div class="flex justify-center items-center gap-2">
+                    <a href="{{ route('invoices.show', $invoice) }}"
+                       class="p-2 rounded-md transition duration-150 text-gray-400 hover:bg-gray-100 hover:text-blue-600 active:bg-blue-100 active:text-blue-700 focus:bg-blue-100 focus:outline-none"
+                       title="View Invoice"
+                       aria-label="View invoice">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </a>
 
-                <div x-data="{ open:false }" class="flex justify-center">
+                    @if($invoice->status != 'paid')
+                    <a href="{{ route('invoices.edit', $invoice) }}"
+                       class="p-2 rounded-md transition duration-150 text-gray-400 hover:bg-gray-100 hover:text-blue-600 active:bg-blue-100 active:text-blue-700 focus:bg-blue-100 focus:outline-none"
+                       title="Edit Invoice"
+                       aria-label="Edit invoice">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                            <path d="m15 5 3 3"/>
+                        </svg>
+                    </a>
+                    @endif
 
-                    {{-- 3 dots button --}}
-                    <button
-                        @click="open = !open"
-                        @keydown.escape.window="open = false"
-                        class="w-10 h-10 flex items-center justify-center rounded-md hover:bg-gray-200 text-xl"
-                        aria-label="Actions">
-                        ⋮
-                    </button>
+                    <a href="{{ route('invoices.download', $invoice) }}"
+                       class="p-2 rounded-md transition duration-150 text-gray-400 hover:bg-gray-100 hover:text-blue-600 active:bg-blue-100 active:text-blue-700 focus:bg-blue-100 focus:outline-none"
+                       title="Download PDF"
+                       aria-label="Download invoice PDF">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <path d="M14 2v6h6"/>
+                            <path d="M12 18v-6"/>
+                            <path d="m9 15 3 3 3-3"/>
+                        </svg>
+                    </a>
 
+                    <a href="{{ route('invoices.send.preview', $invoice) }}"
+                       class="p-2 rounded-md transition duration-150 text-gray-400 hover:bg-gray-100 hover:text-blue-600 active:bg-blue-100 active:text-blue-700 focus:bg-blue-100 focus:outline-none"
+                       title="Send Email"
+                       aria-label="Send invoice email">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m22 2-7 20-4-9-9-4Z"/>
+                            <path d="M22 2 11 13"/>
+                        </svg>
+                    </a>
 
-                    {{-- Dropdown --}}
-                    <div
-                        x-show="open"
-                        @click.away="open=false"
-                        x-cloak
-                        class="absolute right-0 top-full mt-2 w-44 bg-white border rounded-xl shadow-2xl text-sm z-50 overflow-hidden max-h-64 overflow-auto">
-
-
-                        @if($status === 'draft')
-                            <a href="{{ route('invoices.show', $invoice) }}"
-                               class="block px-4 py-2 hover:bg-gray-50">
-                                View
-                            </a>
-
-                            <a href="{{ route('invoices.edit', $invoice) }}"
-                               class="block px-4 py-2 hover:bg-gray-50">
-                                Edit
-                            </a>
-
-                            <a href="{{ route('invoices.download', $invoice) }}"
-                               class="block px-4 py-2 hover:bg-gray-50">
-                                Download PDF
-                            </a>
-
-                            <form action="{{ route('invoices.mark-paid', $invoice) }}" method="POST">
-                                @csrf
-                                <button class="w-full text-left px-4 py-2 hover:bg-gray-50">
-                                    Mark Paid
-                                </button>
-                            </form>
-
-                            <form action="{{ route('invoices.send', $invoice) }}" method="POST">
-                                @csrf
-                                <button class="w-full text-left px-4 py-2 hover:bg-gray-50">
-                                    Send
-                                </button>
-                            </form>
-                        @endif
-
-                        @if($status === 'sent')
-                            <a href="{{ route('invoices.show', $invoice) }}"
-                               class="block px-4 py-2 hover:bg-gray-50">
-                                View
-                            </a>
-
-                            <a href="{{ route('invoices.edit', $invoice) }}"
-                               class="block px-4 py-2 hover:bg-gray-50">
-                                Edit
-                            </a>
-
-                            <a href="{{ route('invoices.download', $invoice) }}"
-                               class="block px-4 py-2 hover:bg-gray-50">
-                                Download PDF
-                            </a>
-
-                            <form action="{{ route('invoices.reminder', $invoice) }}" method="POST">
-                                @csrf
-                                <button class="w-full text-left px-4 py-2 hover:bg-gray-50">
-                                    Reminder
-                                </button>
-                            </form>
-
-                            <form action="{{ route('invoices.mark-paid', $invoice) }}" method="POST">
-                                @csrf
-                                <button class="w-full text-left px-4 py-2 hover:bg-gray-50">
-                                    Mark Paid
-                                </button>
-                            </form>
-                        @endif
-
-                        @if($status === 'paid')
-                            <a href="{{ route('invoices.show', $invoice) }}"
-                               class="block px-4 py-2 hover:bg-gray-50">
-                                View
-                            </a>
-
-                            <a href="{{ route('invoices.download', $invoice) }}"
-                               class="block px-4 py-2 hover:bg-gray-50">
-                                Download PDF
-                            </a>
-
-                            <form method="POST" action="{{ route('invoices.destroy', $invoice) }}">
-                                @csrf
-                                @method('DELETE')
-                                <button class="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-600">
-                                    Delete
-                                </button>
-                            </form>
-                        @endif
-
-                    </div>
-
+                    @if($status !== 'paid')
+                    <form method="POST"
+                          action="{{ route('invoices.destroy', $invoice) }}">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit"
+                                onclick="return confirm('Delete this invoice? This cannot be undone.')"
+                                class="p-2 rounded-md transition duration-150 text-gray-400 hover:bg-gray-100 hover:text-red-600 active:bg-red-100 active:text-red-700 focus:bg-red-100 focus:outline-none"
+                                title="Delete Invoice"
+                                aria-label="Delete invoice">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18"/>
+                                <path d="M8 6V4h8v2"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                <path d="M10 11v6"/>
+                                <path d="M14 11v6"/>
+                            </svg>
+                        </button>
+                    </form>
+                    @endif
                 </div>
-
             </td>
 
         </tr>

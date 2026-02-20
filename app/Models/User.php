@@ -52,6 +52,31 @@ class User extends Authenticatable
         return $this->hasMany(Invoice::class);
     }
 
+    /**
+     * Whether the user has reached the invoice creation limit.
+     * Admin and Pro users are always unlimited.
+     */
+    public function invoiceLimitReached(): bool
+    {
+        if ($this->isAdmin() || $this->isPlanPro() || $this->isPro()) {
+            return false;
+        }
+
+        $limit = config('plans.free.invoice_limit', 5);
+        if ($limit === null) {
+            return false;
+        }
+
+        $invoiceCount = Invoice::query()
+            ->where(function ($q) {
+                $q->where('user_id', $this->id)
+                    ->orWhereHas('client', fn ($c) => $c->where('user_id', $this->id));
+            })
+            ->count();
+
+        return $invoiceCount >= (int) $limit;
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Role helpers

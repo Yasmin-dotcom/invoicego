@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Setting;
 use App\Models\Invoice;
 use App\Models\ReminderLog;
+use App\Models\SettingsReminder;
 use App\Mail\InvoicePaymentReminderMail;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
@@ -16,139 +17,113 @@ class SendInvoiceReminders extends Command
 {
     protected $signature = 'app:send-invoice-reminders {--overdue : Only send reminders for overdue invoices}';
 
-    protected $description = 'Send payment reminder emails for unpaid invoices';
+    protected $description = 'Send overdue invoice reminders based on global settings';
 
     public function handle()
     {
-        $this->info('Starting payment reminder process...');
+        $this->info('Starting overdue reminder process...');
 
-        /**
-         * ------------------------------------------------------------
-         * ADMIN MASTER TOGGLE
-         * ------------------------------------------------------------
-         */
         $settings = Setting::getSettings();
 
-        if (!$settings || !$settings->reminders_enabled) {
+        if (! $settings || ! $settings->reminders_enabled) {
             $this->warn('Reminders are disabled by admin.');
-
-            // Log skipped outcomes for overdue unpaid invoices (best effort, does not alter send logic).
-            $today = Carbon::today();
-            Invoice::select(['id', 'client_id'])
-                ->whereIn('status', [Invoice::STATUS_SENT, Invoice::STATUS_OVERDUE, 'unpaid'])
-                ->whereNotNull('due_date')
-                ->whereDate('due_date', '<', $today)
-                ->orderBy('id')
-                ->chunkById(250, function ($chunk) {
-                    foreach ($chunk as $inv) {
-                        ReminderLog::logOutcome($inv, 'skipped', 'email', 'admin_disabled', 'after_due');
-                    }
-                });
-
             return Command::SUCCESS;
         }
 
-        /**
-         * ------------------------------------------------------------
-         * CONFIG
-         * ------------------------------------------------------------
-         */
-        $minGapDays   = 3;
-        $maxReminders = config('reminders.max_reminders', 5);
-        $today        = Carbon::today();
+        $global = SettingsReminder::current();
+        if (! $global->reminders_enabled) {
+            $this->warn('Global reminder settings are disabled.');
+            return Command::SUCCESS;
+        }
 
-        /**
-         * ------------------------------------------------------------
-         * FETCH OVERDUE UNPAID INVOICES
-         * ------------------------------------------------------------
-         */
-        // Persist lifecycle overdue rule before fetching (includes legacy "unpaid" as SENT)
+        $today = Carbon::today();
+        $startAfterDays = max(0, (int) ($global->start_after_days ?? 0));
+        $repeatEveryDays = max(1, (int) ($global->repeat_every_days ?? 3));
+        $maxReminders = max(1, (int) ($global->max_reminders ?? 5));
+
         Invoice::query()->autoMarkOverdue();
 
-        $query = Invoice::with('client')
-            ->whereIn('status', [Invoice::STATUS_SENT, Invoice::STATUS_OVERDUE, 'unpaid'])
+        $candidates = Invoice::with(['client'])
             ->whereNotNull('due_date')
-            ->whereDate('due_date', '<', $today);
+            ->whereDate('due_date', '<', $today)
+            ->whereNull('paid_at')
+            ->where(function ($q) {
+                $q->whereNull('status')
+                    ->orWhereRaw('LOWER(status) != ?', [Invoice::STATUS_PAID]);
+            })
+            ->get();
 
-        if ($this->option('overdue')) {
-            $this->info('Filtering for overdue invoices only...');
-        }
-
-        $invoices = $query->get();
-
-        if ($invoices->isEmpty()) {
-            $this->warn('No unpaid invoices found.');
+        if ($candidates->isEmpty()) {
+            $this->warn('No overdue unpaid invoices eligible for reminders.');
             return Command::SUCCESS;
         }
 
-        $this->info("Found {$invoices->count()} unpaid invoice(s).");
+        $this->info("Found {$candidates->count()} invoice(s) eligible for reminders.");
 
         $sentCount = 0;
         $skippedCount = 0;
 
-        /**
-         * ------------------------------------------------------------
-         * PROCESS INVOICES
-         * ------------------------------------------------------------
-         */
-        foreach ($invoices as $invoice) {
+        foreach ($candidates as $invoice) {
+            $reminderType = 'overdue';
 
-            if (!$invoice->client || !$invoice->client->email) {
-                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'email_missing', 'after_due');
+            if (! $invoice->client || ! $invoice->client->email) {
+                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'email_missing', $reminderType);
                 $skippedCount++;
                 continue;
             }
 
-            if (!$invoice->client->reminder_enabled) {
-                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'client_disabled', 'after_due');
+            if (! $invoice->client->reminder_enabled) {
+                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'client_disabled', $reminderType);
                 $skippedCount++;
                 continue;
             }
 
-            if ($invoice->reminder_count >= $maxReminders) {
-                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'limit_reached', 'after_due');
+            $effective = $invoice->client->getEffectiveReminderSettings($global);
+            if (! ($effective['reminders_enabled'] ?? true) || ! ($effective['email_enabled'] ?? true)) {
+                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'reminders_disabled', $reminderType);
                 $skippedCount++;
                 continue;
             }
 
-            $lastReminded = $invoice->last_reminded_at
-                ? Carbon::parse($invoice->last_reminded_at)
-                : null;
-
-            if ($lastReminded && $lastReminded->diffInDays($today) < $minGapDays) {
-                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'gap_not_met', 'after_due');
+            $daysOverdue = (int) $invoice->due_date->diffInDays($today);
+            if ($daysOverdue < $startAfterDays) {
+                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'start_after_not_reached', $reminderType);
                 $skippedCount++;
                 continue;
             }
 
-            /**
-             * ------------------------------------------------------------
-             * SEND EMAIL
-             * ------------------------------------------------------------
-             */
+            if ((int) $invoice->reminder_count >= $maxReminders) {
+                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'limit_reached', $reminderType);
+                $skippedCount++;
+                continue;
+            }
+
+            $lastReminded = $invoice->last_reminded_at ? Carbon::parse($invoice->last_reminded_at) : null;
+            if ($lastReminded && $lastReminded->diffInDays($today) < $repeatEveryDays) {
+                ReminderLog::logOutcome($invoice, 'skipped', 'email', 'repeat_interval_pending', $reminderType);
+                $skippedCount++;
+                continue;
+            }
+
             try {
-                DB::transaction(function () use ($invoice) {
+                DB::transaction(function () use ($invoice, $reminderType) {
                     Mail::to($invoice->client->email)
-                        ->send(new InvoicePaymentReminderMail($invoice, 'overdue'));
+                        ->send(new InvoicePaymentReminderMail($invoice, $reminderType));
 
                     $invoice->increment('reminder_count');
-                    $invoice->update([
-                        'last_reminded_at' => now(),
-                    ]);
+                    $invoice->update(['last_reminded_at' => now()]);
                 });
 
                 $this->info("Reminder sent → {$invoice->invoice_number}");
-                ReminderLog::logOutcome($invoice, 'sent', 'email', null, 'after_due');
+                Log::info('Reminder sent for invoice ' . $invoice->invoice_number);
+                ReminderLog::logOutcome($invoice, 'sent', 'email', null, $reminderType);
                 $sentCount++;
-
             } catch (\Throwable $e) {
                 Log::error('Reminder failed', [
                     'invoice_id' => $invoice->id,
                     'error' => $e->getMessage(),
                 ]);
-
-                // We keep DB error_message logging inside ReminderLog model to remain crash-safe.
-                ReminderLog::logOutcome($invoice, 'failed', 'email', 'exception', 'after_due', $e->getMessage());
+                ReminderLog::logOutcome($invoice, 'failed', 'email', 'exception', $reminderType, $e->getMessage());
                 $skippedCount++;
             }
         }

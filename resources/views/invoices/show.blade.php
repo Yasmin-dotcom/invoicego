@@ -5,8 +5,13 @@
     $isDraft = $invoice->normalizedStatus() === \App\Models\Invoice::STATUS_DRAFT;
     $isPaid = $invoice->normalizedStatus() === \App\Models\Invoice::STATUS_PAID;
     $canMarkPaid = $invoice->normalizedStatus() === \App\Models\Invoice::STATUS_SENT;
+    $isRemindable = in_array($invoice->normalizedStatus(), [\App\Models\Invoice::STATUS_SENT, \App\Models\Invoice::STATUS_OVERDUE], true);
 
     $itemsTotal = $invoice->items?->sum(fn ($item) => $item->total) ?? 0;
+    $displayAmount = $invoice->grand_total ?? $invoice->total;
+    $businessName = $invoice->user->business_name ?? $invoice->user->name ?? config('app.name');
+    $paymentLink = route('invoice.public.pay', ['invoice' => $invoice, 'token' => $invoice->payment_token]);
+    $whatsappMessage = rawurlencode("Hi {$invoice->client->name},\n\nPayment reminder from {$businessName}\n\nInvoice: {$invoice->invoice_number}\nAmount: ₹" . number_format($displayAmount, 2) . "\n\nPay here: {$paymentLink}");
 @endphp
 
 
@@ -42,6 +47,16 @@
         </form>
         @endif
 
+        @if($isRemindable && $invoice->client->phone && $invoice->payment_token)
+        @php $phoneDigits = preg_replace('/[^0-9]/', '', $invoice->client->phone); $waNumber = (strlen($phoneDigits) === 10 ? '91' : '') . $phoneDigits; @endphp
+        <a href="https://wa.me/{{ $waNumber }}?text={{ $whatsappMessage }}"
+           target="_blank"
+           rel="noopener noreferrer"
+           class="px-4 py-2 bg-[#25D366] text-white rounded hover:bg-[#20bd5a] inline-flex items-center gap-2">
+            <span>Send WhatsApp Reminder</span>
+        </a>
+        @endif
+
         <a href="{{ route('invoices.index') }}" class="px-3 py-2 text-gray-600">
             ← Back
         </a>
@@ -70,7 +85,27 @@
 
 </div>
 
-
+{{-- Invoice Timeline --}}
+<div class="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mt-8">
+    <h3 class="text-sm font-semibold mb-4">Invoice Timeline</h3>
+    <div class="flex items-start justify-between">
+        @foreach($timeline as $step)
+            @php $isDone = !empty($step['time']); @endphp
+            <div class="flex-1 flex flex-col items-center text-center">
+                <div class="w-4 h-4 rounded-full {{ $isDone ? 'bg-green-500' : 'bg-gray-300' }}"></div>
+                <span class="mt-2 text-xs font-medium {{ $isDone ? 'text-green-700' : 'text-gray-500' }}">
+                    {{ $step['label'] }}
+                </span>
+                <span class="text-xs text-gray-400">
+                    {{ $step['time'] ? $step['time']->format('d M, h:i A') : 'Pending' }}
+                </span>
+            </div>
+            @if(! $loop->last)
+                <div class="mt-2 h-0.5 flex-1 {{ !empty($timeline[$loop->index + 1]['time']) ? 'bg-green-300' : 'bg-gray-200' }}"></div>
+            @endif
+        @endforeach
+    </div>
+</div>
 
 {{-- ================= ITEMS SECTION ================= --}}
 <div class="bg-white shadow rounded-xl p-6 mt-8">
@@ -81,7 +116,7 @@
     {{-- 🔥 ADD ITEM FORM (ONLY DRAFT) --}}
     @if($isDraft)
     <form action="{{ route('invoices.items.store', $invoice) }}" method="POST"
-          class="grid grid-cols-5 gap-3 mb-6">
+          class="grid grid-cols-6 gap-3 mb-6">
         @csrf
 
         <input name="name" placeholder="Item name" required
@@ -91,6 +126,10 @@
                class="border rounded px-3 py-2">
 
         <input name="price" type="number" step="0.01" placeholder="Price" required
+               class="border rounded px-3 py-2">
+
+        <input name="gst_rate" type="number" step="0.01" min="0" max="100" value="0"
+               placeholder="GST %"
                class="border rounded px-3 py-2">
 
         <button class="bg-blue-600 text-white rounded px-4">
@@ -109,6 +148,7 @@
             <th>Item</th>
             <th>Qty</th>
             <th>Price</th>
+            <th>GST %</th>
             <th>Total</th>
             @if($isDraft)
             <th>Action</th>
@@ -123,6 +163,7 @@
             <td>{{ $item->name }}</td>
             <td>{{ $item->quantity }}</td>
             <td>₹{{ $item->price }}</td>
+            <td>{{ $item->gst_rate ?? 0 }}%</td>
             <td>₹{{ $item->total }}</td>
 
             @if($isDraft)
@@ -137,7 +178,7 @@
         </tr>
         @empty
         <tr>
-            <td colspan="6" class="text-center py-4 text-gray-400">No items added</td>
+            <td colspan="7" class="text-center py-4 text-gray-400">No items added</td>
         </tr>
         @endforelse
         </tbody>

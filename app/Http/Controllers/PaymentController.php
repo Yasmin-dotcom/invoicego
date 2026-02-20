@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\File;
 use Razorpay\Api\Api;
 use Razorpay\Api\Errors\SignatureVerificationError;
 
@@ -18,6 +19,7 @@ class PaymentController extends Controller
     {
         $this->middleware('auth')->except([
             'publicPay',
+            'publicPaySummary',
             'success',
             'paymentSuccessPage'
         ]);
@@ -198,6 +200,27 @@ public function publicPay(Request $request, Invoice $invoice)
     return view('payments.razorpay', compact('invoice'));
 }
 
+/**
+ * Public invoice payment summary page (token in path).
+ * Shows invoice details before Pay Now → Razorpay checkout.
+ */
+public function publicPaySummary(Invoice $invoice, string $token)
+{
+    if ($token !== $invoice->payment_token) {
+        abort(403);
+    }
+
+    if ($invoice->normalizedStatus() === Invoice::STATUS_PAID) {
+        return redirect()
+            ->route('invoice_public_pay', ['invoice' => $invoice, 'token' => $token])
+            ->with('info', 'This invoice has already been paid.');
+    }
+
+    $invoice->load(['client', 'items', 'user']);
+
+    return view('payments.invoice-summary', compact('invoice'));
+}
+
 /*
 =================================
 RAZORPAY WEBHOOK (SECURE)
@@ -220,22 +243,35 @@ public function webhook(Request $request)
 
     $payload = $request->all();
 
+    File::append(
+        storage_path('logs/razorpay.log'),
+        '[' . now()->toDateTimeString() . '] ' . json_encode($payload, JSON_UNESCAPED_SLASHES) . PHP_EOL
+    );
+
     \Log::info('Webhook received', $payload);
 
     // Example: handle payment success
     if (($payload['event'] ?? '') === 'payment.captured') {
-
-        $invoiceId = $payload['payload']['payment']['entity']['notes']['invoice_id'] ?? null;
-
-        if ($invoiceId) {
-            $invoice = Invoice::find($invoiceId);
-
-            if ($invoice && $invoice->status !== 'paid') {
-                $invoice->status = 'paid';
-                $invoice->paid_at = now();
-                $invoice->save();
-            }
+        $orderId = $payload['payload']['payment']['entity']['order_id'] ?? null;
+        if (! $orderId) {
+            return response()->json(['status' => 'ok']);
         }
+
+        $invoice = Invoice::query()
+            ->where('razorpay_order_id', $orderId)
+            ->first();
+
+        if (! $invoice) {
+            return response()->json(['status' => 'ok']);
+        }
+
+        if ($invoice->paid_at || strtolower((string) $invoice->status) === 'paid') {
+            return response()->json(['status' => 'ok']);
+        }
+
+        $invoice->status = 'paid';
+        $invoice->paid_at = now();
+        $invoice->save();
     }
 
     return response()->json(['status' => 'ok']);

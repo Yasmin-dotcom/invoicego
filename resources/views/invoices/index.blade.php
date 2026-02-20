@@ -1,5 +1,25 @@
 <x-app-layout>
 <div class="p-6">
+    @php
+        $invoiceLimitReached = auth()->check() && auth()->user()->invoiceLimitReached();
+    @endphp
+
+    @if(session('plan_limit'))
+    <div class="mb-4 p-4 rounded-xl bg-red-50 border border-red-200 flex justify-between items-center">
+        <div>
+            <div class="font-semibold text-red-700">
+                You reached your invoice limit.
+            </div>
+            <div class="text-sm text-red-600">
+                Upgrade your plan to create more invoices.
+            </div>
+        </div>
+        <a href="{{ route('upgrade') }}"
+           class="px-4 py-2 bg-black text-white rounded-lg text-sm">
+            Upgrade Plan
+        </a>
+    </div>
+    @endif
 
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
@@ -53,10 +73,20 @@
 </div>
 
     {{-- Create button --}}
-    <a href="{{ route('invoices.create') }}"
-       class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">
-        + Create Invoice
-    </a>
+    @if($invoiceLimitReached)
+        <button
+            type="button"
+            disabled
+            title="Invoice limit reached"
+            class="bg-gray-400 text-white px-4 py-2 rounded-lg cursor-not-allowed">
+            + Create Invoice
+        </button>
+    @else
+        <a href="{{ route('invoices.create') }}"
+           class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">
+            + Create Invoice
+        </a>
+    @endif
 
 </div>
 
@@ -175,11 +205,9 @@
 
 
         {{-- Table --}}
-        <div class="bg-white rounded-xl shadow">
+        <div class="bg-white rounded-xl shadow overflow-visible">
             @include('invoices.partials.table')
         </div>
-
-
 
         {{-- ✅ CLEAN PAGINATION (single + right aligned only) --}}
         @if($invoices instanceof \Illuminate\Pagination\LengthAwarePaginator)

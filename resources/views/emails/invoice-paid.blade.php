@@ -49,12 +49,49 @@
                     <td align="right">{{ now()->format('d M Y') }}</td>
                 </tr>
 
+                @php
+                $hasGst =
+                ($invoice->cgst_total ?? 0) > 0 ||
+                ($invoice->sgst_total ?? 0) > 0 ||
+                ($invoice->igst_total ?? 0) > 0;
+                @endphp
+                @if($hasGst)
+                <tr>
+                    <td style="padding:8px 0;color:#6b7280;">Subtotal</td>
+                    <td align="right">₹{{ number_format($invoice->total, 2) }}</td>
+                </tr>
+                @if($invoice->cgst_total > 0)
+                <tr>
+                    <td style="padding:8px 0;color:#6b7280;">CGST</td>
+                    <td align="right">₹{{ number_format($invoice->cgst_total, 2) }}</td>
+                </tr>
+                @endif
+                @if($invoice->sgst_total > 0)
+                <tr>
+                    <td style="padding:8px 0;color:#6b7280;">SGST</td>
+                    <td align="right">₹{{ number_format($invoice->sgst_total, 2) }}</td>
+                </tr>
+                @endif
+                @if($invoice->igst_total > 0)
+                <tr>
+                    <td style="padding:8px 0;color:#6b7280;">IGST</td>
+                    <td align="right">₹{{ number_format($invoice->igst_total, 2) }}</td>
+                </tr>
+                @endif
+                <tr>
+                    <td style="padding:8px 0;color:#6b7280;">Amount Paid</td>
+                    <td align="right" style="font-size:18px;font-weight:bold;">
+                        ₹{{ number_format($invoice->grand_total ?? $invoice->total, 2) }}
+                    </td>
+                </tr>
+                @else
                 <tr>
                     <td style="padding:8px 0;color:#6b7280;">Amount Paid</td>
                     <td align="right" style="font-size:18px;font-weight:bold;">
                         ₹{{ number_format($invoice->total, 2) }}
                     </td>
                 </tr>
+                @endif
 
                 <tr>
                     <td style="padding:8px 0;color:#6b7280;">Status</td>

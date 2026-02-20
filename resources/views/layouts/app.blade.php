@@ -55,7 +55,7 @@
 
     {{-- ================= PAGE CONTENT ================= --}}
     {{-- pt-10 pushes content below navbar --}}
-    <main class="pt-10">
+    <main class="pt-10 overflow-visible">
 
         {{-- Upgrade success banner --}}
         @if (session('upgraded_success'))

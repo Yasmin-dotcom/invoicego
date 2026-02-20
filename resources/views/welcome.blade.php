@@ -262,9 +262,9 @@
 
      {{-- Section 1: Create & Share Invoices (Image RIGHT, Text LEFT) --}}
 
-            <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+            <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 items-start gap-12 lg:gap-16">
+            <div class="grid grid-cols-1 lg:grid-cols-2 items-center gap-12 lg:gap-16">
 
    <!-- LEFT SIDE TEXT -->
 <div class="mt-6 lg:mt-10 flex flex-col justify-center">
@@ -315,10 +315,9 @@
         <!-- RIGHT SIDE IMAGE -->
         <div class="flex justify-center lg:justify-end">
             <img 
-                src="{{ asset('images/hero-dashboard2.jpg') }}" 
+                src="{{ asset('images/23.png') }}" 
                 alt="GST Invoice Dashboard"
-                class="w-full max-w-md lg:max-w-lg object-contain"
-            >
+                class="w-full max-w-lg lg:max-w-xl object-contain">
         </div>
   </div>
 </section>
@@ -326,20 +325,20 @@
             
  {{-- Section 2: Track Payments & Expenses (Image LEFT, Text RIGHT) --}}
 
-<section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+<section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 items-start gap-12 lg:gap-16">
+    <div class="grid grid-cols-1 lg:grid-cols-2 items-center gap-12 lg:gap-16">
 
         <!-- LEFT SIDE IMAGE -->
         <div class="flex justify-center lg:justify-start lg:order-1">
             <img 
-                src="{{ asset('images/hero-dashboard2.jpg') }}" 
+                src="{{ asset('images/24.png') }}" 
                 alt="Track Payments and Expenses"
-                class="w-full max-w-md lg:max-w-lg object-contain">
+                class="w-full max-w-lg lg:max-w-xl object-contain">
         </div>
 
         <!-- RIGHT SIDE TEXT -->
-        <div class="lg:order-2 mt-6 lg:mt-10">
+        <div class="lg:order-2">
 
             <!-- Heading -->
             <h2 class="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight mb-4">
@@ -392,12 +391,12 @@
 {{-- Section 3: Everything you need (Image RIGHT, Text LEFT) --}}
 
 
-<section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+<section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-<div class="grid grid-cols-1 lg:grid-cols-2 items-start gap-12 lg:gap-16">
+<div class="grid grid-cols-1 lg:grid-cols-2 items-center gap-12 lg:gap-16">
 
 <!-- LEFT SIDE TEXT -->
-<div class="mt-6 lg:mt-10 flex flex-col justify-center">
+<div class="flex flex-col justify-center">
 
 <!-- Heading -->
 <h2 class="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight mb-4">
@@ -446,9 +445,9 @@
         <!-- RIGHT SIDE IMAGE -->
         <div class="flex justify-center lg:justify-end">
             <img 
-                src="{{ asset('images/hero-dashboard2.jpg') }}" 
+                src="{{ asset('images/25.png') }}" 
                 alt="GST Invoice Dashboard"
-                class="w-full max-w-md lg:max-w-lg object-contain rounded-2xl shadow-lg"
+                class="w-full max-w-lg lg:max-w-xl object-contain rounded-2xl"
             >
         </div>
   </div>
@@ -456,20 +455,20 @@
 
 {{-- Section 4: Manage Clients (Image RIGHT, Text LEFT) --}}
 
-<section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+<section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 items-start gap-12 lg:gap-16">
+    <div class="grid grid-cols-1 lg:grid-cols-2 items-center gap-12 lg:gap-16">
 
         <!-- LEFT SIDE IMAGE -->
         <div class="flex justify-center lg:justify-start lg:order-1">
             <img 
-                src="{{ asset('images/hero-dashboard2.jpg') }}" 
+                src="{{ asset('images/26.png') }}" 
                 alt="Track Payments and Expenses"
-                class="w-full max-w-md lg:max-w-lg object-contain">
+                class="w-full max-w-lg lg:max-w-xl object-contain">
         </div>
 
        <!-- RIGHT SIDE TEXT -->
-       <div class="lg:order-2 mt-6 lg:mt-10">
+       <div class="lg:order-2">
 
             <!-- Heading -->
             <h2 class="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight mb-4">

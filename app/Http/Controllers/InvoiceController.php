@@ -9,6 +9,7 @@ use App\Mail\InvoiceCreatedMail;
 use App\Mail\InvoicePaidMail;
 use App\Mail\InvoicePaymentReminderMail;
 use App\Services\RazorpayService;
+use App\Services\GstCalculator;
 use App\Models\ReminderLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -73,40 +74,17 @@ class InvoiceController extends Controller
     /**
      * Show the form for creating a new invoice.
      */
-    public function create(): View
+    public function create(): View|RedirectResponse
     {
         $user = Auth::user();
         if (! $user) {
             abort(403);
         }
 
-        // Pro users: skip invoice limit checks entirely.
-        if (auth()->user()->isPlanPro()) {
-            // no-op
-        } else {
-        // V1: Free vs Pro invoice limit (read-only check).
-        // If user has no plan column/value, safely treat as "free".
-        $plan = strtolower(trim((string) ($user->plan ?? 'free')));
-        $isPro = $plan === 'pro';
-
-        if (! $isPro) {
-            $limit = config('plans.free.invoice_limit', 5);
-
-            if ($limit !== null) {
-                $invoiceCount = Invoice::query()
-                    ->where(function ($q) use ($user) {
-                        $q->where('user_id', $user->id)
-                            ->orWhereHas('client', fn ($c) => $c->where('user_id', $user->id));
-                    })
-                    ->count();
-
-                if ($invoiceCount >= (int) $limit) {
-                    return redirect()
-                        ->route('invoices.index')
-                        ->with('error', 'Free plan invoice limit reached. Upgrade to Pro.');
-                }
-            }
-        }
+        if ($user->invoiceLimitReached()) {
+            return redirect()
+                ->route('invoices.index')
+                ->with('plan_limit', true);
         }
 
         // V1: only show the authenticated user's clients.
@@ -127,44 +105,123 @@ class InvoiceController extends Controller
         if (! $user) {
             return redirect()->route('login');
         }
+        $submitAction = $request->input('submit_action', 'save');
+        $items = collect((array) $request->input('items', []))
+            ->filter(function ($item) {
+                return is_array($item) && trim((string) ($item['description'] ?? '')) !== '';
+            })
+            ->values()
+            ->all();
+        $hasItems = ! empty($items);
+        $request->merge(['items' => $items]);
 
         // V1 minimal draft create flow: if no items are present, create a draft invoice.
         // This path intentionally avoids payments/emails and keeps it suitable for V1 testing.
-        if (! $request->filled('items')) {
+        if ($submitAction === 'save') {
             $clientExistsRule = Rule::exists('clients', 'id');
             if (! $user->isAdmin()) {
                 $clientExistsRule = $clientExistsRule->where(fn ($q) => $q->where('user_id', $user->id));
             }
 
-            $validated = $request->validate([
+            $draftRules = [
                 'client_id' => [
                     'required',
                     $clientExistsRule,
                 ],
+                'invoice_date' => ['nullable', 'date'],
                 'due_date' => ['nullable', 'date'],
-            ]);
+                'items' => ['nullable', 'array', 'min:1'],
+            ];
+            if ($hasItems) {
+                $draftRules['items.*.description'] = ['required', 'string', 'max:255'];
+                $draftRules['items.*.quantity'] = ['required', 'numeric', 'min:1'];
+                $draftRules['items.*.price'] = ['required', 'numeric', 'min:0'];
+                $draftRules['items.*.gst_rate'] = ['nullable', 'numeric', 'min:0', 'max:100'];
+            }
+            $validated = $request->validate($draftRules);
 
-            $today = Carbon::today();
+            $invoiceDate = isset($validated['invoice_date']) && $validated['invoice_date']
+                ? Carbon::parse($validated['invoice_date'])
+                : Carbon::today();
+            $client = Client::find($validated['client_id']);
+            $paymentTermsDays = (int) ($client?->getAttribute('payment_terms') ?? 7);
+            $paymentTermsDays = $paymentTermsDays >= 0 ? $paymentTermsDays : 7;
             $dueDate = isset($validated['due_date']) && $validated['due_date']
                 ? Carbon::parse($validated['due_date'])
-                : $today->copy()->addDays(7);
+                : $invoiceDate->copy()->addDays($paymentTermsDays);
 
-            $sequence = Invoice::where('user_id', $user->id)->count() + 1;
-            $invoiceNumber = 'INV-' . date('Y') . '-' . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+            $invoiceNumber = $this->generateUniqueInvoiceNumber((int) $user->id);
+
+            $subtotal = 0;
+            $cgstTotal = 0.0;
+            $sgstTotal = 0.0;
+            $igstTotal = 0.0;
+            foreach (($validated['items'] ?? []) as $item) {
+                $qty = (int) $item['quantity'];
+                $price = (float) $item['price'];
+                $gstRate = (float) ($item['gst_rate'] ?? 0);
+                $subtotal += $qty * $price;
+                if ($gstRate > 0) {
+                    $gstResult = GstCalculator::calculate(
+                        $price,
+                        $qty,
+                        $gstRate,
+                        $user->state_code ?? null,
+                        $client?->state_code ?? null
+                    );
+                    $cgstTotal += $gstResult['cgst'];
+                    $sgstTotal += $gstResult['sgst'];
+                    $igstTotal += $gstResult['igst'];
+                }
+            }
+            $grandTotal = ($cgstTotal + $sgstTotal + $igstTotal) > 0
+                ? round($subtotal + $cgstTotal + $sgstTotal + $igstTotal, 2)
+                : null;
 
             $invoice = Invoice::create([
                 'user_id' => $user->id,
                 'client_id' => $validated['client_id'],
                 'invoice_number' => $invoiceNumber,
-                'invoice_date' => $today,
+                'invoice_date' => $invoiceDate,
                 'due_date' => $dueDate,
-                'total' => 0,
+                'total' => round($subtotal, 2),
+                'cgst_total' => $cgstTotal > 0 ? round($cgstTotal, 2) : null,
+                'sgst_total' => $sgstTotal > 0 ? round($sgstTotal, 2) : null,
+                'igst_total' => $igstTotal > 0 ? round($igstTotal, 2) : null,
+                'grand_total' => $grandTotal,
                 'status' => Invoice::STATUS_DRAFT,
             ]);
+            foreach (($validated['items'] ?? []) as $item) {
+                $qty = (int) $item['quantity'];
+                $price = (float) $item['price'];
+                $gstRate = (float) ($item['gst_rate'] ?? 0);
+                $itemData = [
+                    'invoice_id' => $invoice->id,
+                    'description' => $item['description'],
+                    'quantity' => $qty,
+                    'price' => $price,
+                ];
+                if ($gstRate > 0) {
+                    $gstResult = GstCalculator::calculate(
+                        $price,
+                        $qty,
+                        $gstRate,
+                        $user->state_code ?? null,
+                        $client?->state_code ?? null
+                    );
+                    $itemData['gst_rate'] = $gstRate;
+                    $itemData['cgst'] = $gstResult['cgst'];
+                    $itemData['sgst'] = $gstResult['sgst'];
+                    $itemData['igst'] = $gstResult['igst'];
+                }
+                InvoiceItem::create($itemData);
+            }
+            Log::info('Invoice saved with due date: ' . $invoice->due_date);
+            Log::info('Invoice items saved count: ' . count($validated['items'] ?? []));
 
             return redirect()
-                ->route('invoices.show', $invoice)
-                ->with('success', 'Draft invoice created successfully.');
+                ->route('invoices.index')
+                ->with('success', 'Draft invoice saved successfully.');
         }
 
         /**
@@ -195,23 +252,59 @@ class InvoiceController extends Controller
                 }),
             ],
             'invoice_date' => ['required', 'date'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.description' => ['required', 'string', 'max:255'],
-            'items.*.quantity' => ['required', 'numeric', 'min:1'],
-            'items.*.price' => ['required', 'numeric', 'min:0'],
+            'due_date' => ['nullable', 'date'],
+            'items' => ['nullable', 'array', 'min:1'],
         ]);
-
-        $total = collect($validated['items'])->sum(function ($item) {
-            return $item['quantity'] * $item['price'];
-        });
+        if ($hasItems) {
+            $validated = array_merge($validated, $request->validate([
+                'items.*.description' => ['required', 'string', 'max:255'],
+                'items.*.quantity' => ['required', 'numeric', 'min:1'],
+                'items.*.price' => ['required', 'numeric', 'min:0'],
+                'items.*.gst_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            ]));
+        }
 
         $invoiceDate = Carbon::parse($validated['invoice_date']);
-        $dueDate = $invoiceDate->copy()->addDays(7);
+        $client = Client::find($validated['client_id']);
+        $paymentTermsDays = (int) ($client?->getAttribute('payment_terms') ?? 7);
+        $paymentTermsDays = $paymentTermsDays >= 0 ? $paymentTermsDays : 7;
+        $dueDate = isset($validated['due_date']) && $validated['due_date']
+            ? Carbon::parse($validated['due_date'])
+            : $invoiceDate->copy()->addDays($paymentTermsDays);
+        $sellerStateCode = $user->state_code ?? null;
+        $clientStateCode = $client?->state_code ?? null;
 
-        $invoice = DB::transaction(function () use ($validated, $total, $invoiceDate, $dueDate, $user) {
-            $year = date('Y');
-            $sequence = Invoice::where('user_id', $user->id)->whereYear('created_at', $year)->count() + 1;
-            $invoiceNumber = 'INV-' . $year . '-' . str_pad($sequence, 4, '0', STR_PAD_LEFT);
+        $invoice = DB::transaction(function () use ($validated, $invoiceDate, $dueDate, $user, $sellerStateCode, $clientStateCode) {
+            $invoiceNumber = $this->generateUniqueInvoiceNumber((int) $user->id);
+
+            $subtotal = 0;
+            $cgstTotal = 0.0;
+            $sgstTotal = 0.0;
+            $igstTotal = 0.0;
+
+            foreach ($validated['items'] as $item) {
+                $qty = (int) $item['quantity'];
+                $price = (float) $item['price'];
+                $gstRate = (float) ($item['gst_rate'] ?? 0);
+                $subtotal += $qty * $price;
+
+                if ($gstRate > 0) {
+                    $gstResult = GstCalculator::calculate(
+                        $price,
+                        $qty,
+                        $gstRate,
+                        $sellerStateCode,
+                        $clientStateCode
+                    );
+                    $cgstTotal += $gstResult['cgst'];
+                    $sgstTotal += $gstResult['sgst'];
+                    $igstTotal += $gstResult['igst'];
+                }
+            }
+
+            $grandTotal = ($cgstTotal + $sgstTotal + $igstTotal) > 0
+                ? round($subtotal + $cgstTotal + $sgstTotal + $igstTotal, 2)
+                : null;
 
             $invoice = Invoice::create([
                 'user_id' => $user->id,
@@ -219,21 +312,47 @@ class InvoiceController extends Controller
                 'invoice_number' => $invoiceNumber,
                 'invoice_date' => $invoiceDate,
                 'due_date' => $dueDate,
-                'total' => $total,
+                'total' => round($subtotal, 2),
+                'cgst_total' => $cgstTotal > 0 ? round($cgstTotal, 2) : null,
+                'sgst_total' => $sgstTotal > 0 ? round($sgstTotal, 2) : null,
+                'igst_total' => $igstTotal > 0 ? round($igstTotal, 2) : null,
+                'grand_total' => $grandTotal,
                 'status' => 'pending',
             ]);
 
             foreach ($validated['items'] as $item) {
-                InvoiceItem::create([
+                $qty = (int) $item['quantity'];
+                $price = (float) $item['price'];
+                $gstRate = (float) ($item['gst_rate'] ?? 0);
+
+                $itemData = [
                     'invoice_id' => $invoice->id,
                     'description' => $item['description'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                ]);
+                    'quantity' => $qty,
+                    'price' => $price,
+                ];
+
+                if ($gstRate > 0) {
+                    $gstResult = GstCalculator::calculate(
+                        $price,
+                        $qty,
+                        $gstRate,
+                        $sellerStateCode,
+                        $clientStateCode
+                    );
+                    $itemData['gst_rate'] = $gstRate;
+                    $itemData['cgst'] = $gstResult['cgst'];
+                    $itemData['sgst'] = $gstResult['sgst'];
+                    $itemData['igst'] = $gstResult['igst'];
+                }
+
+                InvoiceItem::create($itemData);
             }
 
             return $invoice;
         });
+        Log::info('Invoice saved with due date: ' . $invoice->due_date);
+        Log::info('Invoice items saved count: ' . count($validated['items'] ?? []));
 
         try {
             $razorpayService = new RazorpayService();
@@ -254,15 +373,17 @@ class InvoiceController extends Controller
             throw $e;
         }
 
-        $invoice->load('client');
-        if ($invoice->client && $invoice->client->email) {
-            try {
-                Mail::to($invoice->client->email)->send(new InvoiceCreatedMail($invoice));
-            } catch (\Exception $e) {
-                Log::error('Failed to send invoice created email', [
-                    'invoice_id' => $invoice->id,
-                    'error' => $e->getMessage(),
-                ]);
+        if ($submitAction === 'save_send') {
+            $invoice->load('client');
+            if ($invoice->client && $invoice->client->email) {
+                try {
+                    Mail::to($invoice->client->email)->send(new InvoiceCreatedMail($invoice));
+                } catch (\Exception $e) {
+                    Log::error('Failed to send invoice created email', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
@@ -378,8 +499,14 @@ class InvoiceController extends Controller
         }
 
         $invoice->load(['client', 'items']);
+        $timeline = [
+            ['label' => 'Draft', 'time' => $invoice->created_at],
+            ['label' => 'Sent', 'time' => $invoice->sent_at ? Carbon::parse($invoice->sent_at) : null],
+            ['label' => 'Viewed', 'time' => $invoice->viewed_at ? Carbon::parse($invoice->viewed_at) : null],
+            ['label' => 'Paid', 'time' => $invoice->paid_at ? Carbon::parse($invoice->paid_at) : null],
+        ];
 
-        return view('invoices.show', compact('invoice'));
+        return view('invoices.show', compact('invoice', 'timeline'));
     }
 
     /**
@@ -430,36 +557,115 @@ class InvoiceController extends Controller
         abort(403);
     }
 
-    // ✅ allow resend (draft OR sent OR overdue)
-    $invoice->update([
-        'status' => Invoice::STATUS_SENT,
-    ]);
+    return redirect()
+        ->route('invoices.send.preview', $invoice)
+        ->with('success', 'Review email before sending.');
+}
 
-    // ✅ SEND EMAIL HERE (THIS WAS MISSING)
-    $invoice->load('client');
+    /**
+     * Show send email preview with delivery options.
+     */
+    public function sendPreview(Invoice $invoice): View
+    {
+        $user = Auth::user();
+        if (! $user) {
+            abort(403);
+        }
 
-    if ($invoice->client && $invoice->client->email) {
+        $ownsInvoice = (int) $invoice->user_id === (int) $user->id;
+        if (! $ownsInvoice) {
+            $invoice->loadMissing('client:id,user_id');
+            $ownsInvoice = $invoice->client && (int) $invoice->client->user_id === (int) $user->id;
+        }
+        if (! $user->isAdmin() && ! $ownsInvoice) {
+            abort(403);
+        }
+
+        $invoice->load(['client', 'items']);
+        $previewSubject = 'New Invoice: ' . $invoice->invoice_number;
+        $previewMessage = "Dear " . ($invoice->client->name ?? 'Valued Client') . ",\n\n"
+            . "A new invoice has been created for you. Please review and pay using the Pay Now button.\n\n"
+            . "Best regards,\nInvoice SaaS Team";
+
+        return view('invoices.send-preview', compact('invoice', 'previewSubject', 'previewMessage'));
+    }
+
+    /**
+     * Send invoice email after preview (with/without PDF).
+     */
+    public function sendEmail(Request $request, Invoice $invoice): RedirectResponse
+    {
+        $user = Auth::user();
+        if (! $user) {
+            return redirect()->route('login');
+        }
+
+        $ownsInvoice = (int) $invoice->user_id === (int) $user->id;
+        if (! $ownsInvoice) {
+            $invoice->loadMissing('client:id,user_id');
+            $ownsInvoice = $invoice->client && (int) $invoice->client->user_id === (int) $user->id;
+        }
+        if (! $user->isAdmin() && ! $ownsInvoice) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'include_pdf' => ['required', 'boolean'],
+            'subject' => ['required', 'string', 'max:255'],
+            'message' => ['required', 'string', 'max:5000'],
+            'attachments' => ['nullable', 'array', 'max:3'],
+            'attachments.*' => ['file', 'max:10240'],
+        ]);
+
+        $status = $invoice->normalizedStatus();
+        if (! in_array($status, [Invoice::STATUS_DRAFT, Invoice::STATUS_SENT, Invoice::STATUS_OVERDUE], true)) {
+            return redirect()
+                ->route('invoices.show', $invoice)
+                ->with('info', 'This invoice cannot be sent by email.');
+        }
+
+        $invoice->load('client');
+        if (! $invoice->client || ! $invoice->client->email) {
+            return redirect()
+                ->route('invoices.show', $invoice)
+                ->with('error', 'Client email not found. Cannot send invoice email.');
+        }
+
+        if ($invoice->normalizedStatus() !== Invoice::STATUS_SENT) {
+            $invoice->update(['status' => Invoice::STATUS_SENT]);
+        }
+
         try {
-            Mail::to($invoice->client->email)
-                ->send(new InvoiceCreatedMail($invoice));
+            $mailable = new InvoiceCreatedMail($invoice, (bool) $validated['include_pdf']);
+            $mailable->subject($validated['subject']);
+            $mailable->with(['custom_message' => $validated['message']]);
 
-            Log::info('Invoice sent email delivered', [
-                'invoice_id' => $invoice->id,
-                'email' => $invoice->client->email
-            ]);
+            foreach (($validated['attachments'] ?? []) as $file) {
+                $mailable->attach(
+                    $file->getRealPath(),
+                    [
+                        'as' => $file->getClientOriginalName(),
+                        'mime' => $file->getClientMimeType(),
+                    ]
+                );
+            }
 
-        } catch (\Exception $e) {
-            Log::error('Failed to send invoice sent email', [
+            Mail::to($invoice->client->email)->send($mailable);
+
+            return redirect()
+                ->route('invoices.show', $invoice)
+                ->with('success', 'Invoice email sent successfully.');
+        } catch (\Throwable $e) {
+            Log::error('Failed to send invoice email from preview', [
                 'invoice_id' => $invoice->id,
                 'error' => $e->getMessage(),
             ]);
+
+            return redirect()
+                ->route('invoices.send.preview', $invoice)
+                ->with('error', 'Failed to send invoice email. Please try again.');
         }
     }
-
-    return redirect()
-        ->back()
-        ->with('success', 'Invoice sent + email delivered successfully.');
-}
 
 
     /**
@@ -670,7 +876,7 @@ public function search(\Illuminate\Http\Request $request)
 /**
  * Show edit invoice form (V2 safe feature)
  */
-public function edit(Invoice $invoice): View
+public function edit(Invoice $invoice): View|RedirectResponse
 {
     $user = Auth::user();
     if (! $user) {
@@ -735,33 +941,82 @@ public function update(Request $request, Invoice $invoice): RedirectResponse
         'items.*.description' => ['required', 'string'],
         'items.*.quantity' => ['required', 'numeric', 'min:1'],
         'items.*.price' => ['required', 'numeric', 'min:0'],
+        'items.*.gst_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
     ]);
 
-    DB::transaction(function () use ($invoice, $validated) {
+    $client = Client::find($validated['client_id']);
+    $sellerStateCode = $user->state_code ?? null;
+    $clientStateCode = $client?->state_code ?? null;
+
+    DB::transaction(function () use ($invoice, $validated, $sellerStateCode, $clientStateCode) {
+        $subtotal = 0;
+        $cgstTotal = 0.0;
+        $sgstTotal = 0.0;
+        $igstTotal = 0.0;
+
+        foreach ($validated['items'] as $item) {
+            $qty = (int) $item['quantity'];
+            $price = (float) $item['price'];
+            $gstRate = (float) ($item['gst_rate'] ?? 0);
+            $subtotal += $qty * $price;
+
+            if ($gstRate > 0) {
+                $gstResult = GstCalculator::calculate(
+                    $price,
+                    $qty,
+                    $gstRate,
+                    $sellerStateCode,
+                    $clientStateCode
+                );
+                $cgstTotal += $gstResult['cgst'];
+                $sgstTotal += $gstResult['sgst'];
+                $igstTotal += $gstResult['igst'];
+            }
+        }
+
+        $grandTotal = ($cgstTotal + $sgstTotal + $igstTotal) > 0
+            ? round($subtotal + $cgstTotal + $sgstTotal + $igstTotal, 2)
+            : null;
 
         $invoice->update([
             'client_id' => $validated['client_id'],
+            'total' => round($subtotal, 2),
+            'cgst_total' => $cgstTotal > 0 ? round($cgstTotal, 2) : null,
+            'sgst_total' => $sgstTotal > 0 ? round($sgstTotal, 2) : null,
+            'igst_total' => $igstTotal > 0 ? round($igstTotal, 2) : null,
+            'grand_total' => $grandTotal,
         ]);
 
-        // delete old items
         $invoice->items()->delete();
 
-        $total = 0;
-
         foreach ($validated['items'] as $item) {
-            $total += $item['quantity'] * $item['price'];
+            $qty = (int) $item['quantity'];
+            $price = (float) $item['price'];
+            $gstRate = (float) ($item['gst_rate'] ?? 0);
 
-            InvoiceItem::create([
+            $itemData = [
                 'invoice_id' => $invoice->id,
                 'description' => $item['description'],
-                'quantity' => $item['quantity'],
-                'price' => $item['price'],
-            ]);
-        }
+                'quantity' => $qty,
+                'price' => $price,
+            ];
 
-        $invoice->update([
-            'total' => $total,
-        ]);
+            if ($gstRate > 0) {
+                $gstResult = GstCalculator::calculate(
+                    $price,
+                    $qty,
+                    $gstRate,
+                    $sellerStateCode,
+                    $clientStateCode
+                );
+                $itemData['gst_rate'] = $gstRate;
+                $itemData['cgst'] = $gstResult['cgst'];
+                $itemData['sgst'] = $gstResult['sgst'];
+                $itemData['igst'] = $gstResult['igst'];
+            }
+
+            InvoiceItem::create($itemData);
+        }
     });
 
     return redirect()
@@ -990,5 +1245,34 @@ public function update(Request $request, Invoice $invoice): RedirectResponse
     
         return response()->stream($callback, 200, $headers);
     }    
+
+    private function generateUniqueInvoiceNumber(int $userId): string
+    {
+        $year = date('Y');
+        $prefix = 'INV-' . $year . '-';
+
+        $lastNumber = Invoice::query()
+            ->where('user_id', $userId)
+            ->where('invoice_number', 'like', $prefix . '%')
+            ->orderByDesc('invoice_number')
+            ->value('invoice_number');
+
+        $lastSequence = 0;
+        if (is_string($lastNumber) && preg_match('/^INV-\d{4}-(\d+)$/', $lastNumber, $matches)) {
+            $lastSequence = (int) $matches[1];
+        }
+
+        do {
+            $lastSequence++;
+            $invoiceNumber = $prefix . str_pad((string) $lastSequence, 4, '0', STR_PAD_LEFT);
+        } while (
+            Invoice::query()
+                ->where('user_id', $userId)
+                ->where('invoice_number', $invoiceNumber)
+                ->exists()
+        );
+
+        return $invoiceNumber;
+    }
 
 }

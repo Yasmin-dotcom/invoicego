@@ -12,15 +12,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        $schedule->command('app:mark-overdue-invoices')
-            ->dailyAt('00:05')
-            ->withoutOverlapping()
-            ->runInBackground();
-
-        $schedule->command('app:send-invoice-reminders')
-            ->dailyAt('10:00')
-            ->withoutOverlapping()
-            ->runInBackground();
+        // Scheduling is configured in bootstrap/app.php for this application structure.
     }
 
     /**
