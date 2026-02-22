@@ -26,9 +26,9 @@
 
     <label>
         By continuing, you agree to the 
-        <a href="#" class="text-indigo-200 hover:text-white underline">Terms of Service</a> 
+        <a href="{{ route('legal.terms') }}" class="text-indigo-200 hover:text-white underline">Terms of Service</a> 
         &
-        <a href="#" class="text-indigo-200 hover:text-white underline">Privacy Policy</a>
+        <a href="{{ route('legal.privacy') }}" class="text-indigo-200 hover:text-white underline">Privacy Policy</a>
     </label>
 </div>
          <button type="submit"

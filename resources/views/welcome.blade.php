@@ -1054,8 +1054,8 @@
                         <div>
   <h3 class="text-lg font-semibold text-white mb-3">Legal</h3>
   <ul class="space-y-2 text-sm">
-    <li><a href="#" class="hover:text-white">Privacy Policy</a></li>
-    <li><a href="#" class="hover:text-white">Terms & Conditions</a></li>
+    <li><a href="{{ route('legal.privacy') }}" class="hover:text-white">Privacy Policy</a></li>
+    <li><a href="{{ route('legal.terms') }}" class="hover:text-white">Terms & Conditions</a></li>
   </ul>
 </div>
                     </div>

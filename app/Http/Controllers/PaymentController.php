@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Razorpay\Api\Api;
 use Razorpay\Api\Errors\SignatureVerificationError;
 
@@ -228,6 +229,8 @@ RAZORPAY WEBHOOK (SECURE)
 */
 public function webhook(Request $request)
 {
+    Log::info('RAZORPAY WEBHOOK HIT', request()->all());
+
     // 🔐 Verify signature first (MOST IMPORTANT)
     $signature = $request->header('X-Razorpay-Signature');
 
@@ -272,6 +275,9 @@ public function webhook(Request $request)
         $invoice->status = 'paid';
         $invoice->paid_at = now();
         $invoice->save();
+
+        Mail::to($invoice->client->email)
+    ->send(new \App\Mail\InvoicePaidMail($invoice));
     }
 
     return response()->json(['status' => 'ok']);

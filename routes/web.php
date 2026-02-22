@@ -27,6 +27,9 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::view('/privacy-policy', 'legal.privacy')->name('legal.privacy');
+Route::view('/terms', 'legal.terms')->name('legal.terms');
+
 Route::get('/test-gst', function () {
     $result = GstCalculator::calculate(
         itemPrice: 100,
