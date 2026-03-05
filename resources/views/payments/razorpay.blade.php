@@ -23,6 +23,9 @@ window.onload = function () {
 
         name: "Invoice SaaS",
         description: "Invoice #{{ $invoice->invoice_number }}",
+        
+        order_id: "{{ $invoice->razorpay_order_id ?? '' }}",
+        notes: { invoice_id: "{{ $invoice->id }}" },
 
         handler: function (response) {
 

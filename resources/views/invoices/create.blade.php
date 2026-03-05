@@ -28,7 +28,9 @@
                             <option value="" disabled>No clients found</option>
                         @else
                             @foreach($clients as $client)
-                                <option value="{{ $client->id }}" @selected(old('client_id') == $client->id)>
+                                <option value="{{ $client->id }}"
+                                        data-state-code="{{ $client->state_code ?? '' }}"
+                                        @selected(old('client_id') == $client->id)>
                                     {{ $client->name }}
                                 </option>
                             @endforeach
@@ -63,6 +65,24 @@
                     @error('due_date')
                         <p class="text-red-600 text-sm mt-1">{{ $message }}</p>
                     @enderror
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium">Invoice Template</label>
+                    @php
+                        $appSettings = \App\Models\Setting::getSettings();
+                        $defaultTemplate = $appSettings->default_template ?? 'classic';
+                        $currentTemplate = old('template_name', $defaultTemplate);
+                    @endphp
+                    <select name="template_name" class="border rounded px-3 py-2 w-full">
+                        <option value="classic" @selected($currentTemplate === 'classic')>Classic</option>
+                        <option value="minimal" @selected($currentTemplate === 'minimal')>Minimal</option>
+                        @if(auth()->user()?->isPro())
+                            <option value="modern" @selected($currentTemplate === 'modern')>Modern</option>
+                            <option value="gst" @selected($currentTemplate === 'gst')>GST Focused</option>
+                            <option value="premium" @selected($currentTemplate === 'premium')>Premium</option>
+                        @endif
+                    </select>
                 </div>
 
                 {{-- Invoice Items (optional - add at least one for create-with-items) --}}
@@ -111,6 +131,47 @@
                     <p class="text-xs text-gray-500 mt-1">Leave items empty to create a draft invoice. Add at least one item to create a full invoice.</p>
                 </div>
 
+                <div class="flex justify-end">
+                    <div class="w-full max-w-sm rounded border border-gray-200 bg-gray-50 p-4">
+                        <div class="flex items-center justify-between text-sm text-gray-600">
+                            <span>Subtotal</span>
+                            <input id="createSubtotalPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
+                            <span>CGST</span>
+                            <input id="createCgstPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
+                            <span>SGST</span>
+                            <input id="createSgstPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
+                            <span>IGST</span>
+                            <input id="createIgstPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
+                            <span>Total GST</span>
+                            <input id="createGstAmountPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-sm font-semibold text-gray-900">
+                            <span>Grand Total</span>
+                            <input id="createGrandTotalPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                    </div>
+                </div>
+
                 <div class="flex justify-end gap-2">
                     <button type="submit"
                             name="submit_action"
@@ -130,6 +191,70 @@
     </div>
 
     <script>
+        (function () {
+            const sellerStateCode = @json(auth()->user()->state_code ?? '');
+            const clientSelect = document.querySelector('select[name="client_id"]');
+            const subtotalEl = document.getElementById('createSubtotalPreview');
+            const cgstEl = document.getElementById('createCgstPreview');
+            const sgstEl = document.getElementById('createSgstPreview');
+            const igstEl = document.getElementById('createIgstPreview');
+            const gstAmountEl = document.getElementById('createGstAmountPreview');
+            const grandTotalEl = document.getElementById('createGrandTotalPreview');
+
+            function parseNumber(value) {
+                const num = parseFloat(String(value).replace(/[^0-9.]/g, ''));
+                return Number.isFinite(num) ? num : 0;
+            }
+
+            function getClientStateCode() {
+                const option = clientSelect?.selectedOptions?.[0];
+                return (option?.dataset?.stateCode || '').trim();
+            }
+
+            function calculateTotals() {
+                const qtyInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[quantity]"]'));
+                const priceInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[price]"]'));
+                const gstInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[gst_rate]"]'));
+
+                let subtotal = 0;
+                let totalGst = 0;
+
+                qtyInputs.forEach((qtyInput, index) => {
+                    const qty = parseNumber(qtyInput.value);
+                    const price = parseNumber(priceInputs[index]?.value);
+                    const gstRate = parseNumber(gstInputs[index]?.value ?? 0);
+                    const itemTotal = qty * price;
+                    subtotal += itemTotal;
+                    totalGst += itemTotal * (gstRate / 100);
+                });
+
+                const seller = String(sellerStateCode || '').trim();
+                const client = getClientStateCode();
+                const isSameState = seller !== '' && client !== '' && seller === client;
+
+                const cgst = isSameState ? totalGst / 2 : 0;
+                const sgst = isSameState ? totalGst / 2 : 0;
+                const igst = isSameState ? 0 : totalGst;
+                const grandTotal = subtotal + totalGst;
+
+                if (subtotalEl) subtotalEl.value = subtotal.toFixed(2);
+                if (cgstEl) cgstEl.value = cgst.toFixed(2);
+                if (sgstEl) sgstEl.value = sgst.toFixed(2);
+                if (igstEl) igstEl.value = igst.toFixed(2);
+                if (gstAmountEl) gstAmountEl.value = totalGst.toFixed(2);
+                if (grandTotalEl) grandTotalEl.value = grandTotal.toFixed(2);
+            }
+
+            document.addEventListener('input', (event) => {
+                if (event.target.matches('[name^="items"][name$="[quantity]"], [name^="items"][name$="[price]"], [name^="items"][name$="[gst_rate]"]')) {
+                    calculateTotals();
+                }
+            });
+
+            clientSelect?.addEventListener('change', calculateTotals);
+            calculateTotals();
+        })();
+
         document.getElementById('createInvoiceForm')?.addEventListener('submit', function(e) {
             const submitAction = e.submitter?.value || 'save';
             if (submitAction === 'save') {

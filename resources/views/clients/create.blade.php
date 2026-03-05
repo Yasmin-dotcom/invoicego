@@ -77,6 +77,38 @@
                         @enderror
                     </div>
 
+                    <!-- State Code (GST) -->
+                    @php
+                    $gstStates = [
+                        '01' => 'Jammu & Kashmir', '02' => 'Himachal Pradesh', '03' => 'Punjab', '04' => 'Chandigarh',
+                        '05' => 'Uttarakhand', '06' => 'Haryana', '07' => 'Delhi', '08' => 'Rajasthan',
+                        '09' => 'Uttar Pradesh', '10' => 'Bihar', '11' => 'Sikkim', '12' => 'Arunachal Pradesh',
+                        '13' => 'Nagaland', '14' => 'Manipur', '15' => 'Mizoram', '16' => 'Tripura',
+                        '17' => 'Meghalaya', '18' => 'Assam', '19' => 'West Bengal', '20' => 'Jharkhand',
+                        '21' => 'Odisha', '22' => 'Chhattisgarh', '23' => 'Madhya Pradesh', '24' => 'Gujarat',
+                        '25' => 'Dadra and Nagar Haveli and Daman and Diu', '26' => 'Maharashtra', '27' => 'Andhra Pradesh',
+                        '28' => 'Karnataka', '29' => 'Goa', '30' => 'Lakshadweep', '31' => 'Kerala',
+                        '32' => 'Tamil Nadu', '33' => 'Puducherry', '34' => 'Telangana', '35' => 'Andaman and Nicobar Islands',
+                        '36' => 'Ladakh', '37' => 'Other Territory',
+                    ];
+                    @endphp
+                    <div>
+                        <label for="state_code" class="block text-sm font-medium text-gray-700 mb-2">
+                            State code (GST)
+                        </label>
+                        <select name="state_code"
+                                id="state_code"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 @error('state_code') border-red-500 @enderror">
+                            <option value="">Select state</option>
+                            @foreach($gstStates as $code => $name)
+                                <option value="{{ $code }}" @selected(old('state_code') == $code)>{{ $name }} ({{ $code }})</option>
+                            @endforeach
+                        </select>
+                        @error('state_code')
+                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                        @enderror
+                    </div>
+
                     <!-- Reminder Enabled Field -->
                     <div>
                         <div class="flex items-center">

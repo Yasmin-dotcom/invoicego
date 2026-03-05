@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Services\GstCalculator;
-
+use App\Services\WhatsAppService;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ClientController;
@@ -15,6 +15,9 @@ use App\Http\Controllers\Client\InvoiceController as ClientInvoiceController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\BusinessController;
+use App\Http\Controllers\PaymentsController;
+use App\Http\Controllers\ReportsController;
 
 
 /*
@@ -58,7 +61,7 @@ Route::get('/payment/success/{invoice}', [PaymentController::class, 'paymentSucc
 */
 
 Route::post('/razorpay/webhook', [PaymentController::class, 'webhook'])
-    ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+   ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class]);
 
 
 /*
@@ -123,6 +126,30 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/settings/reminders', [SettingsController::class, 'saveReminders'])
         ->name('settings.reminders.save');
+
+    Route::get('/settings/templates', [SettingsController::class, 'templates'])
+        ->name('settings.templates');
+
+        Route::post('/settings/templates/save', [SettingsController::class, 'saveTemplate'])
+        ->name('settings.templates.save');
+
+    Route::get('/templates/preview/{template}', [SettingsController::class, 'previewTemplate'])
+        ->name('templates.preview');
+
+    Route::get('/settings/business', [BusinessController::class, 'edit'])
+        ->name('settings.business');
+
+    Route::post('/settings/business', [BusinessController::class, 'update'])
+        ->name('settings.business.update');
+
+    Route::get('/payments', [PaymentsController::class, 'index'])
+        ->name('payments.index');
+
+    Route::get('/reports/download-pdf', [ReportsController::class, 'downloadPdf'])
+        ->name('reports.download.pdf');
+
+    Route::get('/reports', [ReportsController::class, 'index'])
+        ->name('reports.index');
 
 
     /*
@@ -298,6 +325,23 @@ Route::middleware(['auth', 'admin'])
         Route::post('/users/bulk', [UserManagementController::class, 'bulk'])
             ->name('users.bulk');
     });
+    
+
+    require __DIR__.'/auth.php';
+
+    /*
+    |------------------------------------------------------------------------
+    | WhatsApp Routes
+    |------------------------------------------------------------------------
+    */
+
+    Route::get('/test-whatsapp', function () {
+        WhatsAppService::sendMessage(
+            '919330099206',
+            'Hello Yasmin! WhatsApp API test successful.'
+        );
+    
+        return "Message Sent";
+    });
 
 
-require __DIR__.'/auth.php';

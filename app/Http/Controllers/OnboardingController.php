@@ -30,6 +30,18 @@ class OnboardingController extends Controller
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:255'],
             'currency' => ['required', 'string', 'max:10'],
+            'gstin' => ['nullable', 'string', 'max:20'],
+            'state_code' => ['nullable', 'string', 'max:10'],
+            'business_address' => ['nullable', 'string', 'max:2000'],
+            'business_city' => ['nullable', 'string', 'max:100'],
+            'business_state' => ['nullable', 'string', 'max:100'],
+            'business_pincode' => ['nullable', 'string', 'max:10'],
+            'bank_name' => ['nullable', 'string', 'max:150'],
+            'bank_branch' => ['nullable', 'string', 'max:150'],
+            'bank_account_name' => ['nullable', 'string', 'max:150'],
+            'bank_account_number' => ['nullable', 'string', 'max:50'],
+            'bank_ifsc' => ['nullable', 'string', 'max:20'],
+            'invoice_prefix' => ['nullable', 'string', 'max:20'],
             'logo' => ['nullable', 'image', 'max:2048'],
         ]);
 
@@ -41,6 +53,18 @@ class OnboardingController extends Controller
         $user->forceFill([
             'business_name' => $validated['business_name'],
             'currency' => $validated['currency'],
+            'gstin' => $validated['gstin'] ?? null,
+            'state_code' => $validated['state_code'] ?? null,
+            'business_address' => $validated['business_address'] ?? null,
+            'business_city' => $validated['business_city'] ?? null,
+            'business_state' => $validated['business_state'] ?? null,
+            'business_pincode' => $validated['business_pincode'] ?? null,
+            'bank_name' => $validated['bank_name'] ?? null,
+            'bank_branch' => $validated['bank_branch'] ?? null,
+            'bank_account_name' => $validated['bank_account_name'] ?? null,
+            'bank_account_number' => $validated['bank_account_number'] ?? null,
+            'bank_ifsc' => $validated['bank_ifsc'] ?? null,
+            'invoice_prefix' => $validated['invoice_prefix'] ?? null,
             'logo_path' => $logoPath ?? $user->logo_path,
         ])->save();
 

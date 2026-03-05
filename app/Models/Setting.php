@@ -11,12 +11,14 @@ class Setting extends Model
         'reminders_enabled',
         'free_reminder_limit',
         'pro_reminder_limit',
+        'default_template',
     ];
 
     protected $casts = [
         'reminders_enabled' => 'boolean',
         'free_reminder_limit' => 'integer',
         'pro_reminder_limit' => 'integer',
+        'default_template' => 'string',
     ];
 
     /**
@@ -30,6 +32,7 @@ class Setting extends Model
                 'reminders_enabled' => true,
                 'free_reminder_limit' => 5,
                 'pro_reminder_limit' => 9999,
+                'default_template' => 'classic',
             ]);
         });
     }

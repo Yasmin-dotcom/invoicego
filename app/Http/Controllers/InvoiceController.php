@@ -185,16 +185,21 @@ class InvoiceController extends Controller
                 'invoice_date' => $invoiceDate,
                 'due_date' => $dueDate,
                 'total' => round($subtotal, 2),
-                'cgst_total' => $cgstTotal > 0 ? round($cgstTotal, 2) : null,
-                'sgst_total' => $sgstTotal > 0 ? round($sgstTotal, 2) : null,
-                'igst_total' => $igstTotal > 0 ? round($igstTotal, 2) : null,
-                'grand_total' => $grandTotal,
                 'status' => Invoice::STATUS_DRAFT,
             ]);
+            $invoice->forceFill([
+                'cgst_total' => round($cgstTotal, 2),
+                'sgst_total' => round($sgstTotal, 2),
+                'igst_total' => round($igstTotal, 2),
+                'grand_total' => round($grandTotal ?? $subtotal, 2),
+            ])->save();
             foreach (($validated['items'] ?? []) as $item) {
                 $qty = (int) $item['quantity'];
                 $price = (float) $item['price'];
                 $gstRate = (float) ($item['gst_rate'] ?? 0);
+                $cgst = 0.0;
+                $sgst = 0.0;
+                $igst = 0.0;
                 $itemData = [
                     'invoice_id' => $invoice->id,
                     'description' => $item['description'],
@@ -209,12 +214,17 @@ class InvoiceController extends Controller
                         $user->state_code ?? null,
                         $client?->state_code ?? null
                     );
-                    $itemData['gst_rate'] = $gstRate;
-                    $itemData['cgst'] = $gstResult['cgst'];
-                    $itemData['sgst'] = $gstResult['sgst'];
-                    $itemData['igst'] = $gstResult['igst'];
+                    $cgst = (float) $gstResult['cgst'];
+                    $sgst = (float) $gstResult['sgst'];
+                    $igst = (float) $gstResult['igst'];
                 }
-                InvoiceItem::create($itemData);
+                $invoiceItem = InvoiceItem::create($itemData);
+                $invoiceItem->forceFill([
+                    'gst_rate' => round($gstRate, 2),
+                    'cgst' => round($cgst, 2),
+                    'sgst' => round($sgst, 2),
+                    'igst' => round($igst, 2),
+                ])->save();
             }
             Log::info('Invoice saved with due date: ' . $invoice->due_date);
             Log::info('Invoice items saved count: ' . count($validated['items'] ?? []));
@@ -253,6 +263,7 @@ class InvoiceController extends Controller
             ],
             'invoice_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date'],
+            'template_name' => ['nullable', 'string', 'max:50'],
             'items' => ['nullable', 'array', 'min:1'],
         ]);
         if ($hasItems) {
@@ -313,17 +324,23 @@ class InvoiceController extends Controller
                 'invoice_date' => $invoiceDate,
                 'due_date' => $dueDate,
                 'total' => round($subtotal, 2),
-                'cgst_total' => $cgstTotal > 0 ? round($cgstTotal, 2) : null,
-                'sgst_total' => $sgstTotal > 0 ? round($sgstTotal, 2) : null,
-                'igst_total' => $igstTotal > 0 ? round($igstTotal, 2) : null,
-                'grand_total' => $grandTotal,
+                'template_name' => $validated['template_name'] ?? null,
                 'status' => 'pending',
             ]);
+            $invoice->forceFill([
+                'cgst_total' => round($cgstTotal, 2),
+                'sgst_total' => round($sgstTotal, 2),
+                'igst_total' => round($igstTotal, 2),
+                'grand_total' => round($grandTotal ?? $subtotal, 2),
+            ])->save();
 
             foreach ($validated['items'] as $item) {
                 $qty = (int) $item['quantity'];
                 $price = (float) $item['price'];
                 $gstRate = (float) ($item['gst_rate'] ?? 0);
+                $cgst = 0.0;
+                $sgst = 0.0;
+                $igst = 0.0;
 
                 $itemData = [
                     'invoice_id' => $invoice->id,
@@ -340,17 +357,24 @@ class InvoiceController extends Controller
                         $sellerStateCode,
                         $clientStateCode
                     );
-                    $itemData['gst_rate'] = $gstRate;
-                    $itemData['cgst'] = $gstResult['cgst'];
-                    $itemData['sgst'] = $gstResult['sgst'];
-                    $itemData['igst'] = $gstResult['igst'];
+                    $cgst = (float) $gstResult['cgst'];
+                    $sgst = (float) $gstResult['sgst'];
+                    $igst = (float) $gstResult['igst'];
                 }
 
-                InvoiceItem::create($itemData);
+                $invoiceItem = InvoiceItem::create($itemData);
+                $invoiceItem->forceFill([
+                    'gst_rate' => round($gstRate, 2),
+                    'cgst' => round($cgst, 2),
+                    'sgst' => round($sgst, 2),
+                    'igst' => round($igst, 2),
+                ])->save();
             }
 
             return $invoice;
         });
+        $invoice->template_name = $request->template_name ?? 'classic';
+        $invoice->save();
         Log::info('Invoice saved with due date: ' . $invoice->due_date);
         Log::info('Invoice items saved count: ' . count($validated['items'] ?? []));
 
@@ -417,7 +441,8 @@ class InvoiceController extends Controller
         }
 
         $invoice->load(['client', 'items']);
-        $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
+        $template = $invoice->template_name ?: 'classic';
+        $pdf = Pdf::loadView("invoices.templates.$template", compact('invoice'));
 
         return $pdf->download('invoice-' . $invoice->invoice_number . '.pdf');
     }
@@ -446,7 +471,8 @@ class InvoiceController extends Controller
 
         // Prefer PDF if the view + PDF facade work; otherwise fall back to HTML attachment.
         try {
-            $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
+            $template = $invoice->template_name ?: 'classic';
+            $pdf = Pdf::loadView("invoices.templates.$template", compact('invoice'));
             $bytes = $pdf->output();
 
             $tmpPath = tempnam(sys_get_temp_dir(), 'invoice_');
@@ -981,11 +1007,13 @@ public function update(Request $request, Invoice $invoice): RedirectResponse
         $invoice->update([
             'client_id' => $validated['client_id'],
             'total' => round($subtotal, 2),
-            'cgst_total' => $cgstTotal > 0 ? round($cgstTotal, 2) : null,
-            'sgst_total' => $sgstTotal > 0 ? round($sgstTotal, 2) : null,
-            'igst_total' => $igstTotal > 0 ? round($igstTotal, 2) : null,
-            'grand_total' => $grandTotal,
         ]);
+        $invoice->forceFill([
+            'cgst_total' => round($cgstTotal, 2),
+            'sgst_total' => round($sgstTotal, 2),
+            'igst_total' => round($igstTotal, 2),
+            'grand_total' => round($grandTotal ?? $subtotal, 2),
+        ])->save();
 
         $invoice->items()->delete();
 
@@ -993,6 +1021,9 @@ public function update(Request $request, Invoice $invoice): RedirectResponse
             $qty = (int) $item['quantity'];
             $price = (float) $item['price'];
             $gstRate = (float) ($item['gst_rate'] ?? 0);
+            $cgst = 0.0;
+            $sgst = 0.0;
+            $igst = 0.0;
 
             $itemData = [
                 'invoice_id' => $invoice->id,
@@ -1009,13 +1040,18 @@ public function update(Request $request, Invoice $invoice): RedirectResponse
                     $sellerStateCode,
                     $clientStateCode
                 );
-                $itemData['gst_rate'] = $gstRate;
-                $itemData['cgst'] = $gstResult['cgst'];
-                $itemData['sgst'] = $gstResult['sgst'];
-                $itemData['igst'] = $gstResult['igst'];
+                $cgst = (float) $gstResult['cgst'];
+                $sgst = (float) $gstResult['sgst'];
+                $igst = (float) $gstResult['igst'];
             }
 
-            InvoiceItem::create($itemData);
+            $invoiceItem = InvoiceItem::create($itemData);
+            $invoiceItem->forceFill([
+                'gst_rate' => round($gstRate, 2),
+                'cgst' => round($cgst, 2),
+                'sgst' => round($sgst, 2),
+                'igst' => round($igst, 2),
+            ])->save();
         }
     });
 

@@ -81,9 +81,10 @@
 
             </div>
 
-            {{-- Row 2 : Money --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {{-- Remaining Stats : 3-column grid --}}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
 
+                {{-- Paid Amount --}}
                 <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
                     <div class="text-sm text-gray-600">Paid Amount</div>
                     <div class="text-2xl font-bold mt-1 text-green-600">
@@ -91,6 +92,7 @@
                     </div>
                 </div>
 
+                {{-- Pending Amount --}}
                 <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
                     <div class="text-sm text-gray-600">Pending Amount</div>
                     <div class="text-2xl font-bold mt-1 text-yellow-600">
@@ -98,13 +100,7 @@
                     </div>
                 </div>
 
-                <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
-                    <div class="text-sm text-gray-600">This Month Revenue</div>
-                    <div class="text-2xl font-bold mt-1 text-indigo-600">
-                        ₹{{ number_format((float) ($stats['revenue_month'] ?? 0), 2) }}
-                    </div>
-                </div>
-
+                {{-- Overdue Amount --}}
                 <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
                     <div class="text-sm text-gray-600">Overdue Amount</div>
                     <div class="text-2xl font-bold mt-1 text-red-600">
@@ -115,10 +111,23 @@
                     </div>
                 </div>
 
-            </div>
+                {{-- This Month Revenue --}}
+                <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
+                    <div class="text-sm text-gray-600">This Month Revenue</div>
+                    <div class="text-2xl font-bold mt-1 text-indigo-600">
+                        ₹{{ number_format((float) ($stats['revenue_month'] ?? 0), 2) }}
+                    </div>
+                </div>
 
-            {{-- Row 3 : Monthly Summary --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {{-- GST Collected --}}
+                <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
+                    <div class="text-sm text-gray-600">GST Collected</div>
+                    <div class="text-2xl font-bold mt-1 text-emerald-600">
+                        ₹{{ number_format((float) ($stats['gst_collected'] ?? 0), 2) }}
+                    </div>
+                </div>
+
+                {{-- Avg Invoice Value --}}
                 <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
                     <div class="text-sm text-gray-600">Avg Invoice Value</div>
                     <div class="text-2xl font-bold mt-1 text-gray-900">
@@ -126,6 +135,7 @@
                     </div>
                 </div>
 
+                {{-- Total Clients --}}
                 <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
                     <div class="text-sm text-gray-600">Total Clients</div>
                     <div class="text-2xl font-bold mt-1 text-gray-900">
@@ -133,6 +143,7 @@
                     </div>
                 </div>
 
+                {{-- Overdue Count --}}
                 <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
                     <div class="text-sm text-gray-600">Overdue Count</div>
                     <div class="text-2xl font-bold mt-1 text-red-600">
@@ -140,12 +151,14 @@
                     </div>
                 </div>
 
+                {{-- Collection Rate --}}
                 <div class="rounded-2xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition p-6">
                     <div class="text-sm text-gray-600">Collection Rate %</div>
                     <div class="text-2xl font-bold mt-1 text-green-600">
                         {{ number_format((float) ($stats['collection_rate'] ?? 0), 1) }}%
                     </div>
                 </div>
+
             </div>
 
             {{-- Revenue (Last 6 Months) --}}

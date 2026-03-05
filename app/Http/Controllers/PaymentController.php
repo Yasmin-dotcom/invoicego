@@ -22,7 +22,8 @@ class PaymentController extends Controller
             'publicPay',
             'publicPaySummary',
             'success',
-            'paymentSuccessPage'
+            'paymentSuccessPage',
+            'webhook'   // 👈 must be here
         ]);
     
         $key = config('services.razorpay.key');    

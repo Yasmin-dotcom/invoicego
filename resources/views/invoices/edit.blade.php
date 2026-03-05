@@ -37,6 +37,7 @@
 
                         @foreach($clients as $client)
                             <option value="{{ $client->id }}"
+                                data-state-code="{{ $client->state_code ?? '' }}"
                                 @selected(old('client_id', $invoice->client_id) == $client->id)>
                                 {{ $client->name }}
                             </option>
@@ -115,7 +116,25 @@
                                    class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
                         </div>
                         <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
-                            <span>Tax Amount</span>
+                            <span>CGST</span>
+                            <input id="editCgstPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
+                            <span>SGST</span>
+                            <input id="editSgstPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
+                            <span>IGST</span>
+                            <input id="editIgstPreview" type="text" readonly
+                                   value="0.00"
+                                   class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-sm text-gray-600">
+                            <span>Total GST</span>
                             <input id="gstAmountPreview" type="text" readonly
                                    value="0.00"
                                    class="w-24 text-right bg-transparent border-0 p-0 text-gray-900" />
@@ -148,7 +167,12 @@
 
     <script>
         (function () {
+            const sellerStateCode = @json(auth()->user()->state_code ?? '');
+            const clientSelect = document.querySelector('select[name="client_id"]');
             const subtotalEl = document.getElementById('subtotalPreview');
+            const cgstEl = document.getElementById('editCgstPreview');
+            const sgstEl = document.getElementById('editSgstPreview');
+            const igstEl = document.getElementById('editIgstPreview');
             const gstAmountEl = document.getElementById('gstAmountPreview');
             const grandTotalEl = document.getElementById('grandTotalPreview');
 
@@ -157,12 +181,17 @@
                 return Number.isFinite(num) ? num : 0;
             }
 
+            function getClientStateCode() {
+                const option = clientSelect?.selectedOptions?.[0];
+                return (option?.dataset?.stateCode || '').trim();
+            }
+
             function calculateTotals() {
                 const qtyInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[quantity]"]'));
                 const priceInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[price]"]'));
                 const gstInputs = Array.from(document.querySelectorAll('[name^="items"][name$="[gst_rate]"]'));
                 let subtotal = 0;
-                let gstAmount = 0;
+                let totalGst = 0;
 
                 qtyInputs.forEach((qtyInput, index) => {
                     const qty = parseNumber(qtyInput.value);
@@ -170,13 +199,22 @@
                     const gstRate = parseNumber(gstInputs[index]?.value ?? 0);
                     const itemTotal = qty * price;
                     subtotal += itemTotal;
-                    gstAmount += itemTotal * (gstRate / 100);
+                    totalGst += itemTotal * (gstRate / 100);
                 });
 
-                const grandTotal = subtotal + gstAmount;
+                const seller = String(sellerStateCode || '').trim();
+                const client = getClientStateCode();
+                const isSameState = seller !== '' && client !== '' && seller === client;
+                const cgst = isSameState ? totalGst / 2 : 0;
+                const sgst = isSameState ? totalGst / 2 : 0;
+                const igst = isSameState ? 0 : totalGst;
+                const grandTotal = subtotal + totalGst;
 
                 if (subtotalEl) subtotalEl.value = subtotal.toFixed(2);
-                if (gstAmountEl) gstAmountEl.value = gstAmount.toFixed(2);
+                if (cgstEl) cgstEl.value = cgst.toFixed(2);
+                if (sgstEl) sgstEl.value = sgst.toFixed(2);
+                if (igstEl) igstEl.value = igst.toFixed(2);
+                if (gstAmountEl) gstAmountEl.value = totalGst.toFixed(2);
                 if (grandTotalEl) grandTotalEl.value = grandTotal.toFixed(2);
             }
 
@@ -186,6 +224,7 @@
                 }
             });
 
+            clientSelect?.addEventListener('change', calculateTotals);
             calculateTotals();
         })();
     </script>

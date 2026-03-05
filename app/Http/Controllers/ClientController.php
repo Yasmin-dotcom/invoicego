@@ -40,11 +40,13 @@ class ClientController extends Controller
             'email' => 'nullable|email',
             'phone' => ['nullable','digits_between:10,15'],
             'address' => 'nullable|string',
+            'state_code' => ['nullable', 'string', 'max:10'],
             'enable_reminders' => 'nullable|boolean',
         ]);
 
         $data['user_id'] = auth()->id();
         $data['enable_reminders'] = $request->has('enable_reminders');
+        $data['state_code'] = $data['state_code'] ?? null;
 
         Client::create($data);
 
@@ -73,10 +75,12 @@ class ClientController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string'],
+            'state_code' => ['nullable', 'string', 'max:10'],
             'reminder_enabled' => ['nullable', 'boolean'],
         ]);
 
         $validated['reminder_enabled'] = $request->has('reminder_enabled');
+        $validated['state_code'] = $validated['state_code'] ?? null;
 
         // V2.2 — Reminder limit on update
         if (

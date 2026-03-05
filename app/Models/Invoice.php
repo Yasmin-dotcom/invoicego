@@ -23,6 +23,7 @@ class Invoice extends Model
         'invoice_date',
         'due_date',
         'total',
+        'template_name',
         'status',
         'paid_at',
         'razorpay_payment_link',
@@ -51,6 +52,23 @@ class Invoice extends Model
 
                 $invoice->payment_token = $token;
             }
+        });
+        static::created(function (self $invoice) {
+
+            if (!$invoice->client || !$invoice->client->phone) {
+                return;
+            }
+        
+            $phone = '91' . preg_replace('/[^0-9]/', '', $invoice->client->phone);
+        
+            $message =
+                "Hello {$invoice->client->name},\n\n" .
+                "Your invoice #{$invoice->invoice_number} has been created.\n" .
+                "Amount: ₹{$invoice->total}\n" .
+                "Due date: {$invoice->due_date}\n\n" .
+                "Please pay on time.\n\nSirfStyle Invoice";
+        
+            \App\Services\WhatsAppService::sendMessage($phone, $message);
         });
     }
 

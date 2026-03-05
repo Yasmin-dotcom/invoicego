@@ -14,6 +14,7 @@ class Client extends Model
         'phone',
         'email',
         'address',
+        'state_code',
         'reminder_enabled',
         'reminder_channel',
     ];

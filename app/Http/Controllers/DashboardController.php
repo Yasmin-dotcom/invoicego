@@ -40,6 +40,9 @@ class DashboardController extends Controller
         $sentStatuses = [Invoice::STATUS_SENT, 'unpaid'];
         $paidStatuses = [Invoice::STATUS_PAID];
 
+        $amountExpr = DB::raw('COALESCE(grand_total, total)');
+        $gstExpr = DB::raw('COALESCE(cgst_total,0) + COALESCE(sgst_total,0) + COALESCE(igst_total,0)');
+
         $stats = [
             'total_invoices' => (clone $base)->count(),
 
@@ -47,22 +50,25 @@ class DashboardController extends Controller
             'sent_count' => (clone $base)->whereIn('status', $sentStatuses)->count(),
             'paid_count' => (clone $base)->whereIn('status', $paidStatuses)->count(),
 
-            'paid_amount' => (clone $base)->whereIn('status', $paidStatuses)->sum('total'),
+            'paid_amount' => (clone $base)->whereIn('status', $paidStatuses)->sum($amountExpr),
 
             'pending_amount' => (clone $base)
                 ->whereIn('status', array_merge($draftStatuses, $sentStatuses))
-                ->sum('total'),
+                ->sum($amountExpr),
 
             'revenue_month' => (clone $base)
                 ->whereMonth('invoice_date', now()->month)
                 ->whereYear('invoice_date', now()->year)
-                ->sum('total'),
+                ->sum($amountExpr),
 
-            'overdue_amount' => (clone $base)->where('status', 'overdue')->sum('total'),
+            'overdue_amount' => (clone $base)->where('status', 'overdue')->sum($amountExpr),
             'overdue_count' => (clone $base)->where('status', 'overdue')->count(),
 
-            'avg_invoice_value' => (clone $base)->avg('total'),
+            'avg_invoice_value' => (clone $base)->avg($amountExpr),
             'total_clients' => Client::query()->where('user_id', $userId)->count(),
+            'gst_collected' => (clone $base)
+                ->whereIn('status', $paidStatuses)
+                ->sum($gstExpr),
         ];
 
         $paidAmount = (float) ($stats['paid_amount'] ?? 0);
@@ -73,7 +79,7 @@ class DashboardController extends Controller
 
         $monthly = (clone $base)
             ->whereNotNull('invoice_date')
-            ->selectRaw("DATE_FORMAT(invoice_date, '%Y-%m') as ym, SUM(total) as total")
+            ->selectRaw("DATE_FORMAT(invoice_date, '%Y-%m') as ym, SUM(COALESCE(grand_total, total)) as total")
             ->groupBy('ym')
             ->orderBy('ym', 'desc')
             ->limit(6)
@@ -109,7 +115,7 @@ class DashboardController extends Controller
 
         $topCustomers = (clone $base)
             ->whereIn('status', $paidStatuses)
-            ->selectRaw('client_id, SUM(total) as revenue')
+            ->selectRaw('client_id, SUM(COALESCE(grand_total, total)) as revenue')
             ->groupBy('client_id')
             ->orderByDesc('revenue')
             ->limit(5)
